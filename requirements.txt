@@ -1,0 +1,17 @@
+kaggle
+pandas
+numpy
+
+matplotlib
+seaborn
+
+scikit-learn
+
+statsmodels
+prophet
+ipywidgets
+
+xgboost
+catboost
+
+tensorflow
