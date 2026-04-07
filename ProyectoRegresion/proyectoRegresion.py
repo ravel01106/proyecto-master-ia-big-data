@@ -283,3 +283,80 @@ print("  Guardado: 2.4.6_boxplots.png")
 
 print("\n  Todos los gráficos guardados en la carpeta 'graficos/'")
 
+# 2.5 ANÁLISIS TEMPORAL
+
+print("\n\n=== 2.5 ANÁLISIS TEMPORAL ===")
+
+print("\n--- 2.5.1 Conversión de InvoiceDate a datetime ---")
+df['InvoiceDate'] = pd.to_datetime(df['InvoiceDate'], format='mixed')
+print(f"  Tipo resultante: {df['InvoiceDate'].dtype}")
+print(f"  Fecha mínima: {df['InvoiceDate'].min()}")
+print(f"  Fecha máxima: {df['InvoiceDate'].max()}")
+print(f"  Rango total: {(df['InvoiceDate'].max() - df['InvoiceDate'].min()).days} días")
+
+df['Fecha'] = df['InvoiceDate'].dt.normalize()
+
+print("\n--- 2.5.3 Transacciones por día ---")
+trans_por_dia = df.groupby('Fecha').size().rename('NumTransacciones')
+print(f"  Días con datos: {len(trans_por_dia)}")
+print(f"  Media transacciones/día: {trans_por_dia.mean():.1f}")
+print(f"  Máximo transacciones en un día: {trans_por_dia.max()} ({trans_por_dia.idxmax().date()})")
+print(f"  Mínimo transacciones en un día: {trans_por_dia.min()} ({trans_por_dia.idxmin().date()})")
+
+print("\n--- 2.5.4 Días sin datos en el rango ---")
+rango_completo = pd.date_range(start=df['Fecha'].min(), end=df['Fecha'].max(), freq='D')
+dias_sin_datos = rango_completo.difference(trans_por_dia.index)
+print(f"  Total días en el rango: {len(rango_completo)}")
+print(f"  Días con datos: {len(trans_por_dia)}")
+print(f"  Días sin datos: {len(dias_sin_datos)}")
+print(f"  Listado de días sin datos:")
+print(dias_sin_datos.strftime('%Y-%m-%d').tolist())
+
+print("\n  Generando gráfico 2.5.5 - Evolución de transacciones diarias...")
+fig, ax = plt.subplots(figsize=(14, 5))
+ax.plot(trans_por_dia.index, trans_por_dia.values, linewidth=1, color='steelblue')
+ax.set_title('Evolución de transacciones diarias (dic 2010 – dic 2011)', fontsize=14)
+ax.set_xlabel('Fecha')
+ax.set_ylabel('Nº de transacciones')
+ax.axvline(pd.Timestamp('2011-11-25'), color='orange', linestyle='--', linewidth=1.2, label='Black Friday 2011')
+ax.axvline(pd.Timestamp('2011-12-01'), color='red',    linestyle='--', linewidth=1.2, label='Diciembre (test set)')
+ax.legend()
+plt.tight_layout()
+plt.savefig(f'{RUTA_GRAFICOS}2.5.5_transacciones_diarias.png', dpi=150)
+plt.show()
+plt.close()
+print("  Guardado: 2.5.5_transacciones_diarias.png")
+
+print("\n  Generando gráfico 2.5.6 - Transacciones por mes...")
+df['Mes'] = df['InvoiceDate'].dt.to_period('M')
+trans_por_mes = df.groupby('Mes').size().rename('NumTransacciones')
+
+fig, ax = plt.subplots(figsize=(12, 5))
+trans_por_mes.plot(kind='bar', ax=ax, color='steelblue', edgecolor='white')
+ax.set_title('Transacciones por mes', fontsize=14)
+ax.set_xlabel('Mes')
+ax.set_ylabel('Nº de transacciones')
+ax.tick_params(axis='x', rotation=45)
+plt.tight_layout()
+plt.savefig(f'{RUTA_GRAFICOS}2.5.6_transacciones_por_mes.png', dpi=150)
+plt.show()
+plt.close()
+print("  Guardado: 2.5.6_transacciones_por_mes.png")
+
+# --- 2.5.7 Gráfico: transacciones por día de la semana ---
+print("\n  Generando gráfico 2.5.7 - Transacciones por día de la semana...")
+dias_semana = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+df['DiaSemana'] = df['InvoiceDate'].dt.day_name()
+trans_por_dia_semana = df.groupby('DiaSemana').size().reindex(dias_semana).rename('NumTransacciones')
+
+fig, ax = plt.subplots(figsize=(9, 5))
+sns.barplot(x=trans_por_dia_semana.index, y=trans_por_dia_semana.values, ax=ax)
+ax.set_title('Transacciones por día de la semana', fontsize=14)
+ax.set_xlabel('Día')
+ax.set_ylabel('Nº de transacciones')
+plt.tight_layout()
+plt.savefig(f'{RUTA_GRAFICOS}2.5.7_transacciones_dia_semana.png', dpi=150)
+plt.show()
+plt.close()
+print("  Guardado: 2.5.7_transacciones_dia_semana.png")
+
