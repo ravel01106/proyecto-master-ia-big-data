@@ -113,3 +113,56 @@ print(stock_no_estandar['StockCode'].value_counts().head(15))
 print("\n--- 2.2.8 Distribucion de Country (value_counts) ---")
 print(df['Country'].value_counts())
 
+# 2.3 BÚSQUEDA DE OUTLIERS
+
+print("\n\n=== 2.3 BUSQUEDA DE OUTLIERS ===")
+
+print("\n--- 2.3.1 Outliers en Quantity (método IQR) ---")
+Q1_qty = df['Quantity'].quantile(0.25)
+Q3_qty = df['Quantity'].quantile(0.75)
+IQR_qty = Q3_qty - Q1_qty
+limite_inf_qty = Q1_qty - 1.5 * IQR_qty
+limite_sup_qty = Q3_qty + 1.5 * IQR_qty
+outliers_qty = df[(df['Quantity'] < limite_inf_qty) | (df['Quantity'] > limite_sup_qty)]
+print(f"  Q1: {Q1_qty} | Q3: {Q3_qty} | IQR: {IQR_qty}")
+print(f"  Límite inferior: {limite_inf_qty} | Límite superior: {limite_sup_qty}")
+print(f"  Total outliers en Quantity: {len(outliers_qty)} ({len(outliers_qty) / len(df) * 100:.2f}%)")
+print(f"  Valores extremos (top 5 mayores):")
+print(df.nlargest(5, 'Quantity')[['InvoiceNo', 'StockCode', 'Description', 'Quantity', 'UnitPrice']])
+print(f"  Valores extremos (top 5 menores):")
+print(df.nsmallest(5, 'Quantity')[['InvoiceNo', 'StockCode', 'Description', 'Quantity', 'UnitPrice']])
+
+print("\n--- 2.3.2 Outliers en UnitPrice (método IQR) ---")
+Q1_price = df['UnitPrice'].quantile(0.25)
+Q3_price = df['UnitPrice'].quantile(0.75)
+IQR_price = Q3_price - Q1_price
+limite_inf_price = Q1_price - 1.5 * IQR_price
+limite_sup_price = Q3_price + 1.5 * IQR_price
+outliers_price = df[(df['UnitPrice'] < limite_inf_price) | (df['UnitPrice'] > limite_sup_price)]
+print(f"  Q1: {Q1_price} | Q3: {Q3_price} | IQR: {IQR_price}")
+print(f"  Límite inferior: {limite_inf_price} | Límite superior: {limite_sup_price}")
+print(f"  Total outliers en UnitPrice: {len(outliers_price)} ({len(outliers_price) / len(df) * 100:.2f}%)")
+print(f"  Valores extremos (top 5 mayores):")
+print(df.nlargest(5, 'UnitPrice')[['InvoiceNo', 'StockCode', 'Description', 'Quantity', 'UnitPrice']])
+
+print("\n--- 2.3.3 StockCodes menos frecuentes (posibles outliers categóricos) ---")
+stock_freq = df['StockCode'].value_counts()
+stock_raros = stock_freq[stock_freq <= 3]
+print(f"  StockCodes con 3 o menos apariciones: {len(stock_raros)}")
+print(f"  Ejemplos:")
+print(stock_raros.head(10))
+
+print("\n--- 2.3.4 Descriptions menos frecuentes (posibles outliers categóricos) ---")
+desc_freq = df['Description'].value_counts()
+desc_raras = desc_freq[desc_freq <= 3]
+print(f"  Descriptions con 3 o menos apariciones: {len(desc_raras)}")
+print(f"  Ejemplos:")
+print(desc_raras.head(10))
+
+print("\n--- 2.3.5 Distribución de Quantity por percentiles ---")
+percentiles = [0.01, 0.05, 0.25, 0.50, 0.75, 0.95, 0.99, 1.0]
+print(df['Quantity'].quantile(percentiles))
+
+print("\n--- 2.3.6 Distribución de UnitPrice por percentiles ---")
+print(df['UnitPrice'].quantile(percentiles))
+
