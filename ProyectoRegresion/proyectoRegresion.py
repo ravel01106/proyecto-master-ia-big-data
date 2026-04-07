@@ -1,4 +1,7 @@
 import pandas as pd
+import matplotlib.pyplot as plt
+import matplotlib.ticker as mticker
+import seaborn as sns
 
 # 1. CARGA DEL DATASET
 
@@ -165,4 +168,118 @@ print(df['Quantity'].quantile(percentiles))
 
 print("\n--- 2.3.6 Distribución de UnitPrice por percentiles ---")
 print(df['UnitPrice'].quantile(percentiles))
+
+# 2.4 GRÁFICOS AUXILIARES
+
+print("\n\n=== 2.4 CREACIÓN DE GRÁFICOS AUXILIARES ===")
+
+sns.set_theme(style='whitegrid', palette='muted')
+RUTA_GRAFICOS = 'graficos/'
+import os
+os.makedirs(RUTA_GRAFICOS, exist_ok=True)
+
+print("\n  Generando gráfico 2.4.1 - Valores faltantes por columna...")
+nulos = df.isnull().sum()
+nulos = nulos[nulos > 0]
+
+fig, ax = plt.subplots(figsize=(7, 4))
+sns.barplot(x=nulos.index, y=nulos.values, ax=ax)
+ax.set_title('Valores faltantes por columna', fontsize=14)
+ax.set_xlabel('Columna')
+ax.set_ylabel('Nº de valores nulos')
+for bar in ax.patches:
+    ax.text(bar.get_x() + bar.get_width() / 2,
+            bar.get_height() + 500,
+            f'{int(bar.get_height()):,}',
+            ha='center', va='bottom', fontsize=10)
+plt.tight_layout()
+plt.savefig(f'{RUTA_GRAFICOS}2.4.1_valores_faltantes.png', dpi=150)
+plt.show()
+plt.close()
+print("  Guardado: 2.4.1_valores_faltantes.png")
+
+print("\n  Generando gráfico 2.4.2 - Distribución de Quantity (rango normal)...")
+qty_filtrado = df[(df['Quantity'] > 0) & (df['Quantity'] <= 100)]
+
+fig, ax = plt.subplots(figsize=(9, 4))
+sns.histplot(qty_filtrado['Quantity'], bins=50, ax=ax, kde=True)
+ax.set_title('Distribución de Quantity (0–100 uds.)', fontsize=14)
+ax.set_xlabel('Quantity')
+ax.set_ylabel('Frecuencia')
+plt.tight_layout()
+plt.savefig(f'{RUTA_GRAFICOS}2.4.2_distribucion_quantity.png', dpi=150)
+plt.show()
+plt.close()
+print("  Guardado: 2.4.2_distribucion_quantity.png")
+
+print("\n  Generando gráfico 2.4.3 - Distribución de UnitPrice (rango normal)...")
+price_filtrado = df[(df['UnitPrice'] > 0) & (df['UnitPrice'] <= 20)]
+
+fig, ax = plt.subplots(figsize=(9, 4))
+sns.histplot(price_filtrado['UnitPrice'], bins=50, ax=ax, kde=True, color='coral')
+ax.set_title('Distribución de UnitPrice (0–20 €)', fontsize=14)
+ax.set_xlabel('UnitPrice (€)')
+ax.set_ylabel('Frecuencia')
+plt.tight_layout()
+plt.savefig(f'{RUTA_GRAFICOS}2.4.3_distribucion_unitprice.png', dpi=150)
+plt.show()
+plt.close()
+print("  Guardado: 2.4.3_distribucion_unitprice.png")
+
+print("\n  Generando gráfico 2.4.4 - Top 10 países por transacciones...")
+top_paises = df['Country'].value_counts().head(10)
+
+fig, ax = plt.subplots(figsize=(9, 5))
+sns.barplot(x=top_paises.values, y=top_paises.index, ax=ax, orient='h')
+ax.set_title('Top 10 países por número de transacciones', fontsize=14)
+ax.set_xlabel('Nº de transacciones')
+ax.set_ylabel('País')
+ax.xaxis.set_major_formatter(mticker.FuncFormatter(lambda x, _: f'{int(x):,}'))
+plt.tight_layout()
+plt.savefig(f'{RUTA_GRAFICOS}2.4.4_top10_paises.png', dpi=150)
+plt.show()
+plt.close()
+print("  Guardado: 2.4.4_top10_paises.png")
+
+print("\n  Generando gráfico 2.4.5 - Proporción de transacciones anómalas...")
+total = len(df)
+n_qty_neg    = (df['Quantity'] <= 0).sum()
+n_price_neg  = (df['UnitPrice'] <= 0).sum()
+n_sin_client = df['CustomerID'].isnull().sum()
+n_duplicados = df.duplicated().sum()
+n_normales   = total - n_qty_neg - n_price_neg - n_sin_client - n_duplicados
+
+labels  = ['Normales', 'Quantity ≤ 0', 'UnitPrice ≤ 0', 'Sin CustomerID', 'Duplicados']
+valores = [n_normales, n_qty_neg, n_price_neg, n_sin_client, n_duplicados]
+colores = ['#4CAF50', '#F44336', '#FF9800', '#2196F3', '#9C27B0']
+
+fig, ax = plt.subplots(figsize=(8, 6))
+ax.pie(valores, labels=labels, colors=colores, autopct='%1.1f%%', startangle=140)
+ax.set_title('Proporción de transacciones por tipo de anomalía', fontsize=14)
+plt.tight_layout()
+plt.savefig(f'{RUTA_GRAFICOS}2.4.5_proporcion_anomalias.png', dpi=150)
+plt.show()
+plt.close()
+print("  Guardado: 2.4.5_proporcion_anomalias.png")
+
+print("\n  Generando gráfico 2.4.6 - Boxplots Quantity y UnitPrice...")
+qty_box   = df[(df['Quantity'] > 0) & (df['Quantity'] <= 100)]['Quantity']
+price_box = df[(df['UnitPrice'] > 0) & (df['UnitPrice'] <= 20)]['UnitPrice']
+
+fig, axes = plt.subplots(1, 2, figsize=(11, 5))
+sns.boxplot(y=qty_box, ax=axes[0], color='steelblue')
+axes[0].set_title('Boxplot Quantity (0–100)', fontsize=13)
+axes[0].set_ylabel('Quantity')
+
+sns.boxplot(y=price_box, ax=axes[1], color='coral')
+axes[1].set_title('Boxplot UnitPrice (0–20 €)', fontsize=13)
+axes[1].set_ylabel('UnitPrice (€)')
+
+plt.tight_layout()
+plt.savefig(f'{RUTA_GRAFICOS}2.4.6_boxplots.png', dpi=150)
+plt.show()
+plt.close()
+print("  Guardado: 2.4.6_boxplots.png")
+
+print("\n  Todos los gráficos guardados en la carpeta 'graficos/'")
 
