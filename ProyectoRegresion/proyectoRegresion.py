@@ -125,7 +125,7 @@ limite_inf_qty = Q1_qty - 1.5 * IQR_qty
 limite_sup_qty = Q3_qty + 1.5 * IQR_qty
 outliers_qty = df[(df['Quantity'] < limite_inf_qty) | (df['Quantity'] > limite_sup_qty)]
 print(f"  Q1: {Q1_qty} | Q3: {Q3_qty} | IQR: {IQR_qty}")
-print(f"  Límite inferior: {limite_inf_qty} | Límite superior: {limite_sup_qty}")
+print(f"  Limite inferior: {limite_inf_qty} | Limite superior: {limite_sup_qty}")
 print(f"  Total outliers en Quantity: {len(outliers_qty)} ({len(outliers_qty) / len(df) * 100:.2f}%)")
 print(f"  Valores extremos (top 5 mayores):")
 print(df.nlargest(5, 'Quantity')[['InvoiceNo', 'StockCode', 'Description', 'Quantity', 'UnitPrice']])
@@ -140,7 +140,7 @@ limite_inf_price = Q1_price - 1.5 * IQR_price
 limite_sup_price = Q3_price + 1.5 * IQR_price
 outliers_price = df[(df['UnitPrice'] < limite_inf_price) | (df['UnitPrice'] > limite_sup_price)]
 print(f"  Q1: {Q1_price} | Q3: {Q3_price} | IQR: {IQR_price}")
-print(f"  Límite inferior: {limite_inf_price} | Límite superior: {limite_sup_price}")
+print(f"  Limite inferior: {limite_inf_price} | Limite superior: {limite_sup_price}")
 print(f"  Total outliers en UnitPrice: {len(outliers_price)} ({len(outliers_price) / len(df) * 100:.2f}%)")
 print(f"  Valores extremos (top 5 mayores):")
 print(df.nlargest(5, 'UnitPrice')[['InvoiceNo', 'StockCode', 'Description', 'Quantity', 'UnitPrice']])
