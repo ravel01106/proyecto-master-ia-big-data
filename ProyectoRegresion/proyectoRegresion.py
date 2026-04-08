@@ -604,3 +604,34 @@ plt.show()
 plt.close()
 print("  Guardado: 2.8.6_pareto_clientes.png")
 
+# ===========================================================================
+# 3. LIMPIEZA DE DATOS
+# ===========================================================================
+
+# Trabajamos sobre una copia para preservar el DataFrame original del EDA
+df_clean = df.copy()
+filas_iniciales = len(df_clean)
+print(f"\n\n{'='*60}")
+print(f"  INICIO LIMPIEZA — Filas iniciales: {filas_iniciales:,}")
+print(f"{'='*60}")
+
+# ---------------------------------------------------------------------------
+# 3.1 ELIMINAR FILAS CON Description NULA
+# ---------------------------------------------------------------------------
+# Motivo: el 100% de estas filas cumplen simultáneamente:
+#   - Description = NaN  → no sabemos qué producto es
+#   - UnitPrice = 0      → no generan ningún ingreso (TotalPrice = 0)
+#   - CustomerID = NaN   → no tienen cliente asociado
+# No son recuperables y solo añadirían ruido al modelo.
+
+print("\n--- 3.1 Eliminar filas con Description nula ---")
+
+antes = len(df_clean)
+df_clean = df_clean.dropna(subset=['Description'])
+eliminadas = antes - len(df_clean)
+
+print(f"  Filas antes:     {antes:,}")
+print(f"  Filas eliminadas: {eliminadas:,}")
+print(f"  Filas después:   {len(df_clean):,}")
+print(f"  Verificación — Description nulos restantes: {df_clean['Description'].isnull().sum()}")
+
