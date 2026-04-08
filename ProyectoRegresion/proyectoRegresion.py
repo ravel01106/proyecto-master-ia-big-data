@@ -283,7 +283,7 @@ print("  Guardado: 2.4.6_boxplots.png")
 
 print("\n  Todos los gráficos guardados en la carpeta 'graficos/'")
 
-# 2.5 ANÁLISIS TEMPORAL
+# 2.5 y 2.6 ANÁLISIS TEMPORAL y Análisis exploratorio de los datos y su calidad
 
 print("\n\n=== 2.5 ANÁLISIS TEMPORAL ===")
 
@@ -343,7 +343,6 @@ plt.show()
 plt.close()
 print("  Guardado: 2.5.6_transacciones_por_mes.png")
 
-# --- 2.5.7 Gráfico: transacciones por día de la semana ---
 print("\n  Generando gráfico 2.5.7 - Transacciones por día de la semana...")
 dias_semana = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 df['DiaSemana'] = df['InvoiceDate'].dt.day_name()
@@ -359,4 +358,88 @@ plt.savefig(f'{RUTA_GRAFICOS}2.5.7_transacciones_dia_semana.png', dpi=150)
 plt.show()
 plt.close()
 print("  Guardado: 2.5.7_transacciones_dia_semana.png")
+
+# 2.6 ANÁLISIS DE CANCELACIONES (prefijo "C" en InvoiceNo)
+
+print("\n\n=== 2.6 ANÁLISIS DE CANCELACIONES ===")
+
+print("\n--- 2.6.1 Facturas con prefijo 'C' (cancelaciones) ---")
+df['EsCancelacion'] = df['InvoiceNo'].str.startswith('C')
+n_cancelaciones = df['EsCancelacion'].sum()
+print(f"  Total filas con prefijo 'C': {n_cancelaciones}")
+print(f"  % sobre total: {n_cancelaciones / len(df) * 100:.2f}%")
+print(f"  Facturas únicas canceladas: {df[df['EsCancelacion']]['InvoiceNo'].nunique()}")
+
+print("\n--- 2.6.2 Cruce entre prefijo 'C' y Quantity < 0 ---")
+con_C_qty_neg    = df[ df['EsCancelacion'] &  (df['Quantity'] < 0)]
+con_C_qty_pos    = df[ df['EsCancelacion'] & (df['Quantity'] >= 0)]
+sin_C_qty_neg    = df[~df['EsCancelacion'] &  (df['Quantity'] < 0)]
+sin_C_qty_pos    = df[~df['EsCancelacion'] & (df['Quantity'] >= 0)]
+
+print(f"  Prefijo 'C' + Quantity < 0  (cancelaciones normales):       {len(con_C_qty_neg):>7,}")
+print(f"  Prefijo 'C' + Quantity >= 0 (cancelaciones con qty positiva):{len(con_C_qty_pos):>7,}")
+print(f"  Sin 'C'    + Quantity < 0  (negativos huérfanos):            {len(sin_C_qty_neg):>7,}")
+print(f"  Sin 'C'    + Quantity >= 0 (transacciones normales):         {len(sin_C_qty_pos):>7,}")
+
+print("\n--- 2.6.3 Detalle de negativos huérfanos (sin prefijo 'C') ---")
+print(f"  Total: {len(sin_C_qty_neg)}")
+if len(sin_C_qty_neg) > 0:
+    print(sin_C_qty_neg[['InvoiceNo', 'StockCode', 'Description', 'Quantity', 'UnitPrice', 'CustomerID']].head(10))
+    print(f"\n  StockCodes más frecuentes en huérfanos:")
+    print(sin_C_qty_neg['StockCode'].value_counts().head(10))
+
+print("\n--- 2.6.4 Cancelaciones con Quantity >= 0 (anomalía) ---")
+print(f"  Total: {len(con_C_qty_pos)}")
+if len(con_C_qty_pos) > 0:
+    print(con_C_qty_pos[['InvoiceNo', 'StockCode', 'Description', 'Quantity', 'UnitPrice']].head(10))
+
+print("\n--- 2.6.5 Cancelaciones por mes ---")
+cancelaciones_mes = df[df['EsCancelacion']].groupby('Mes').size().rename('Cancelaciones')
+total_mes         = df.groupby('Mes').size().rename('Total')
+ratio_cancelacion = (cancelaciones_mes / total_mes * 100).round(2).rename('% Cancelaciones')
+print(pd.concat([total_mes, cancelaciones_mes, ratio_cancelacion], axis=1))
+
+print("\n  Generando gráfico 2.6.6 - Proporción cancelaciones vs normales...")
+# Excluimos categorías con 0 para evitar solapamiento de etiquetas
+datos_grafico = {
+    'Normales':                   len(sin_C_qty_pos),
+    'Cancelaciones (C + Qty<0)':  len(con_C_qty_neg),
+    'Huérfanos (sin C + Qty<0)':  len(sin_C_qty_neg),
+}
+labels  = list(datos_grafico.keys())
+valores = list(datos_grafico.values())
+colores = ['#4CAF50', '#F44336', '#9C27B0']
+
+fig, ax = plt.subplots(figsize=(9, 7))
+wedges, texts, autotexts = ax.pie(
+    valores,
+    colors=colores,
+    autopct=lambda p: f'{p:.1f}%\n({int(p * sum(valores) / 100):,})',
+    startangle=140,
+    pctdistance=0.75,
+    wedgeprops={'edgecolor': 'white', 'linewidth': 1.5}
+)
+for autotext in autotexts:
+    autotext.set_fontsize(10)
+ax.legend(wedges, labels, loc='lower center', bbox_to_anchor=(0.5, -0.08),
+          ncol=1, fontsize=10, frameon=True)
+ax.set_title('Tipos de transacciones: normales vs cancelaciones', fontsize=13, pad=20)
+plt.tight_layout()
+plt.savefig(f'{RUTA_GRAFICOS}2.6.6_cancelaciones_proporcion.png', dpi=150)
+plt.show()
+plt.close()
+print("  Guardado: 2.6.6_cancelaciones_proporcion.png")
+
+print("\n  Generando gráfico 2.6.7 - Tasa de cancelación por mes...")
+fig, ax = plt.subplots(figsize=(12, 5))
+ratio_cancelacion.plot(kind='bar', ax=ax, color='salmon', edgecolor='white')
+ax.set_title('Tasa de cancelación mensual (%)', fontsize=14)
+ax.set_xlabel('Mes')
+ax.set_ylabel('% cancelaciones sobre total')
+ax.tick_params(axis='x', rotation=45)
+plt.tight_layout()
+plt.savefig(f'{RUTA_GRAFICOS}2.6.7_tasa_cancelacion_mensual.png', dpi=150)
+plt.show()
+plt.close()
+print("  Guardado: 2.6.7_tasa_cancelacion_mensual.png")
 
