@@ -516,3 +516,91 @@ plt.show()
 plt.close()
 print("  Guardado: 2.7.7_distribucion_ventas_diarias.png")
 
+# 2.8 TOP CLIENTES Y TOP PRODUCTOS
+
+print("\n\n=== 2.8 TOP CLIENTES Y TOP PRODUCTOS ===")
+
+print("\n--- 2.8.1 Top 10 clientes por volumen de ventas (TotalPrice) ---")
+ventas_cliente = (
+    df[df['CustomerID'].notna()]
+    .groupby('CustomerID')['TotalPrice']
+    .sum()
+    .sort_values(ascending=False)
+)
+top10_clientes = ventas_cliente.head(10)
+total_ventas   = df['TotalPrice'].sum()
+print(f"  Ventas totales brutas: £{total_ventas:,.2f}")
+print(f"\n  {'CustomerID':<15} {'Ventas (£)':>15} {'% sobre total':>15}")
+print(f"  {'-'*45}")
+for cid, ventas in top10_clientes.items():
+    print(f"  {int(cid):<15} £{ventas:>13,.2f} {ventas / total_ventas * 100:>14.2f}%")
+pct_top10 = top10_clientes.sum() / total_ventas * 100
+print(f"\n  Top 10 clientes concentran el {pct_top10:.1f}% de las ventas totales")
+
+print("\n--- 2.8.2 Top 10 productos por volumen de ventas (TotalPrice) ---")
+ventas_producto = (
+    df.groupby('StockCode')['TotalPrice']
+    .sum()
+    .sort_values(ascending=False)
+)
+top10_productos = ventas_producto.head(10)
+print(f"\n  {'StockCode':<12} {'Ventas (£)':>15} {'% sobre total':>15} {'Descripción'}")
+print(f"  {'-'*75}")
+for sc, ventas in top10_productos.items():
+    desc = df[df['StockCode'] == sc]['Description'].dropna().mode()
+    desc = desc.iloc[0] if len(desc) > 0 else 'N/A'
+    print(f"  {sc:<12} £{ventas:>13,.2f} {ventas / total_ventas * 100:>14.2f}%  {desc[:35]}")
+pct_top10_prod = top10_productos.sum() / total_ventas * 100
+print(f"\n  Top 10 productos concentran el {pct_top10_prod:.1f}% de las ventas totales")
+
+print("\n--- 2.8.3 Concentración acumulada de ventas (clientes) ---")
+ventas_cliente_pos = ventas_cliente[ventas_cliente > 0].sort_values(ascending=False)
+acumulado_pct      = ventas_cliente_pos.cumsum() / ventas_cliente_pos.sum() * 100
+n_clientes_80      = (acumulado_pct <= 80).sum()
+print(f"  Clientes con ventas positivas: {len(ventas_cliente_pos)}")
+print(f"  Clientes que generan el 80% de las ventas: {n_clientes_80} ({n_clientes_80 / len(ventas_cliente_pos) * 100:.1f}%)")
+
+print("\n  Generando gráfico 2.8.4 - Top 10 clientes por ventas...")
+fig, ax = plt.subplots(figsize=(10, 5))
+sns.barplot(x=[str(int(c)) for c in top10_clientes.index],
+            y=top10_clientes.values, ax=ax, color='steelblue')
+ax.set_title('Top 10 clientes por volumen de ventas brutas (£)', fontsize=13)
+ax.set_xlabel('CustomerID')
+ax.set_ylabel('Ventas (£)')
+ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda x, _: f'£{x:,.0f}'))
+ax.tick_params(axis='x', rotation=30)
+plt.tight_layout()
+plt.savefig(f'{RUTA_GRAFICOS}2.8.4_top10_clientes.png', dpi=150)
+plt.show()
+plt.close()
+print("  Guardado: 2.8.4_top10_clientes.png")
+
+print("\n  Generando gráfico 2.8.5 - Top 10 productos por ventas...")
+fig, ax = plt.subplots(figsize=(10, 5))
+sns.barplot(x=top10_productos.index, y=top10_productos.values, ax=ax, color='coral')
+ax.set_title('Top 10 productos por volumen de ventas brutas (£)', fontsize=13)
+ax.set_xlabel('StockCode')
+ax.set_ylabel('Ventas (£)')
+ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda x, _: f'£{x:,.0f}'))
+ax.tick_params(axis='x', rotation=30)
+plt.tight_layout()
+plt.savefig(f'{RUTA_GRAFICOS}2.8.5_top10_productos.png', dpi=150)
+plt.show()
+plt.close()
+print("  Guardado: 2.8.5_top10_productos.png")
+
+print("\n  Generando gráfico 2.8.6 - Curva de Pareto de clientes...")
+fig, ax = plt.subplots(figsize=(10, 5))
+ax.plot(range(1, len(acumulado_pct) + 1), acumulado_pct.values, color='steelblue', linewidth=1.5)
+ax.axhline(80, color='orange', linestyle='--', linewidth=1.2, label='80% de ventas')
+ax.axvline(n_clientes_80, color='red', linestyle='--', linewidth=1.2, label=f'{n_clientes_80} clientes')
+ax.set_title('Curva de Pareto — concentración de ventas por cliente', fontsize=13)
+ax.set_xlabel('Nº de clientes (ordenados por ventas desc.)')
+ax.set_ylabel('% acumulado de ventas')
+ax.legend()
+plt.tight_layout()
+plt.savefig(f'{RUTA_GRAFICOS}2.8.6_pareto_clientes.png', dpi=150)
+plt.show()
+plt.close()
+print("  Guardado: 2.8.6_pareto_clientes.png")
+
