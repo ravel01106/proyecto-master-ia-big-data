@@ -676,3 +676,18 @@ print(f"  Filas eliminadas: {eliminadas:,}")
 print(f"  Filas después:    {len(df_clean):,}")
 print(f"  Verificación — negativos huérfanos restantes: {(~df_clean['InvoiceNo'].str.startswith('C', na=False) & (df_clean['Quantity'] < 0) & (df_clean['UnitPrice'] == 0.0)).sum()}")
 
+# 3.4 ELIMINAR STOCKCODES NO ESTÁNDAR
+
+print("\n--- 3.4 Eliminar StockCodes no estándar ---")
+
+antes = len(df_clean)
+mask_std = df_clean['StockCode'].str.match(r'^[0-9]{5}[A-Za-z]?$', na=False)
+df_clean = df_clean[mask_std].reset_index(drop=True)
+eliminadas = antes - len(df_clean)
+
+print(f"  Filas antes:      {antes:,}")
+print(f"  Filas eliminadas: {eliminadas:,}")
+print(f"  Filas después:    {len(df_clean):,}")
+n_no_std = (~df_clean['StockCode'].str.match(r'^[0-9]{5}[A-Za-z]?$', na=False)).sum()
+print(f"  Verificación — StockCodes no estándar restantes: {n_no_std}")
+
