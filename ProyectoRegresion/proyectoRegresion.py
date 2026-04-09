@@ -723,6 +723,27 @@ print(f"  Quantity  rango tras capping:  [{df_clean['Quantity'].min():.1f}, {df_
 print(f"  UnitPrice máxima tras capping: £{df_clean['UnitPrice'].max():.2f}")
 print(f"  Filas totales (sin cambio):    {len(df_clean):,}")
 
+# 3.5b ELIMINAR FILAS CON UnitPrice = 0
+#
+# Tras los pasos 3.1–3.5, pueden quedar filas con UnitPrice = 0 que no son
+# huérfanos (ya eliminados en 3.3) sino productos con precio cero: muestras,
+# regalos o errores de registro. Todas generan TotalPrice = 0 con independencia
+# de la Quantity → no aportan señal a la variable objetivo.
+# Mantenerlas añadiría ruido al modelo sin representar ningún ingreso real.
+# EXCEPCIÓN: las cancelaciones (prefijo C) pueden tener UnitPrice = 0 residual
+# tras el capping; también se eliminan porque su TotalPrice = 0 igualmente.
+
+print("\n--- 3.5b Eliminar filas con UnitPrice = 0 ---")
+
+antes = len(df_clean)
+df_clean = df_clean[df_clean['UnitPrice'] > 0].reset_index(drop=True)
+eliminadas = antes - len(df_clean)
+
+print(f"  Filas antes:      {antes:,}")
+print(f"  Filas eliminadas: {eliminadas:,}")
+print(f"  Filas después:    {len(df_clean):,}")
+print(f"  Verificación — filas con UnitPrice = 0 restantes: {(df_clean['UnitPrice'] == 0).sum()}")
+
 # 3.6 CONSERVAR FILAS CON CustomerID NULO
 #
 # Los ~135.080 registros sin CustomerID son ventas anónimas reales.
