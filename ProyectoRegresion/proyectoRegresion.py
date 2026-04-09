@@ -746,6 +746,7 @@ print(f"  Filas antes:      {antes:,}")
 print(f"  Filas eliminadas: {eliminadas:,}")
 print(f"  Filas después:    {len(df_clean):,}")
 print(f"  Verificación — filas con UnitPrice = 0 restantes: {(df_clean['UnitPrice'] == 0).sum()}")
+filas_post_35b = len(df_clean)
 
 # 3.5c ELIMINAR FILAS CON Quantity = 0
 #
@@ -762,6 +763,7 @@ print(f"  Filas antes:      {antes:,}")
 print(f"  Filas eliminadas: {eliminadas:,}")
 print(f"  Filas después:    {len(df_clean):,}")
 print(f"  Verificación — filas con Quantity = 0 restantes: {(df_clean['Quantity'] == 0).sum()}")
+filas_post_35c = len(df_clean)
 
 # 3.6 CONSERVAR FILAS CON CustomerID NULO
 #
@@ -852,14 +854,16 @@ print(f"  RESUMEN LIMPIEZA — COMPARATIVA POR PASO")
 print(f"{'='*60}")
 
 pasos = [
-    ("Filas originales",                     filas_iniciales,           0),
-    ("3.1 Eliminar Description nula",        540_455,  filas_iniciales - 540_455),
-    ("3.2 Eliminar duplicados exactos",       535_187,  540_455 - 535_187),
-    ("3.3 Eliminar negativos huérfanos",      533_851,  535_187 - 533_851),
-    ("3.4 Eliminar StockCodes no estándar",   531_356,  533_851 - 531_356),
-    ("3.5 Capping outliers (sin eliminar)",   531_356,  0),
-    ("3.6 CustomerID nulo (conservar)",       531_356,  0),
-    ("3.7 Cancelaciones (conservar)",         531_356,  0),
+    ("Filas originales",                     filas_iniciales,                  0),
+    ("3.1 Eliminar Description nula",        540_455,   filas_iniciales - 540_455),
+    ("3.2 Eliminar duplicados exactos",      535_187,   540_455 - 535_187),
+    ("3.3 Eliminar negativos huérfanos",     533_851,   535_187 - 533_851),
+    ("3.4 Eliminar StockCodes no estándar",  531_356,   533_851 - 531_356),
+    ("3.5 Capping outliers (sin eliminar)",  531_356,   0),
+    ("3.5b Eliminar UnitPrice = 0",          filas_post_35b,  531_356 - filas_post_35b),
+    ("3.5c Eliminar Quantity = 0",           filas_post_35c,  filas_post_35b - filas_post_35c),
+    ("3.6 CustomerID nulo (conservar)",      filas_post_35c,  0),
+    ("3.7 Cancelaciones (conservar)",        filas_post_35c,  0),
 ]
 
 print(f"\n  {'Paso':<42} {'Filas':>8}  {'Eliminadas':>10}")
@@ -884,3 +888,16 @@ print(f"  Filas:           {filas_finales:,}")
 print(f"  Columnas:        {df_clean.shape[1]}")
 print(f"  Columnas:        {list(df_clean.columns)}")
 print(f"  Memoria (MB):    {df_clean.memory_usage(deep=True).sum() / 1024**2:.1f}")
+
+# Validar variable objetivo final
+print(f"\n--- 3.9 Validación variable objetivo — ventas netas diarias ---")
+ventas_diarias_clean = df_clean.groupby('Fecha')['TotalPrice'].sum()
+print(f"  Días con datos en df_clean:  {len(ventas_diarias_clean)}")
+print("")
+print("  Estadísticas:")
+print(ventas_diarias_clean.describe().apply(lambda x: f'    £{x:>12,.2f}'))
+dias_neg  = (ventas_diarias_clean < 0).sum()
+dias_cero = (ventas_diarias_clean == 0).sum()
+print(f"\n  Días con ventas negativas (devoluciones > ventas): {dias_neg}  {'<-- revisar' if dias_neg > 0 else '✓ ninguno'}")
+print(f"  Días con ventas = 0:                               {dias_cero}  {'<-- revisar' if dias_cero > 0 else '✓ ninguno'}")
+print(f"\n  ✓ Variable objetivo lista para la sección 4 (transformación)")
