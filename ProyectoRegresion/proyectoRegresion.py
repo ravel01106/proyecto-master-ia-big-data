@@ -722,3 +722,19 @@ df_clean['TotalPrice'] = df_clean['Quantity'] * df_clean['UnitPrice']
 print(f"  Quantity  rango tras capping:  [{df_clean['Quantity'].min():.1f}, {df_clean['Quantity'].max():.1f}]")
 print(f"  UnitPrice máxima tras capping: £{df_clean['UnitPrice'].max():.2f}")
 print(f"  Filas totales (sin cambio):    {len(df_clean):,}")
+
+# 3.6 CONSERVAR FILAS CON CustomerID NULO
+#
+# Los ~135.080 registros sin CustomerID son ventas anónimas reales.
+# Para predecir ventas diarias (variable objetivo = suma de TotalPrice por día)
+# el CustomerID es irrelevante: la transacción genera ingresos con independencia
+# de que el cliente esté identificado o no.
+# Eliminarlos supondría perder ~25 % del dataset sin ningún beneficio para el modelo.
+
+print("\n--- 3.6 CustomerID nulo — decisión: conservar ---")
+
+n_sin_cliente = df_clean['CustomerID'].isnull().sum()
+pct = n_sin_cliente / len(df_clean) * 100
+print(f"  Filas con CustomerID nulo: {n_sin_cliente:,} ({pct:.2f}%)")
+print(f"  Decisión: se conservan — son ventas anónimas válidas para la variable objetivo")
+print(f"  Filas totales sin cambio:  {len(df_clean):,}")
