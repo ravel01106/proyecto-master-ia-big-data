@@ -624,11 +624,31 @@ print(f"{'='*60}")
 print("\n--- 3.1 Eliminar filas con Description nula ---")
 
 antes = len(df_clean)
-df_clean = df_clean.dropna(subset=['Description'])
+df_clean = df_clean.dropna(subset=['Description']).reset_index(drop=True)
 eliminadas = antes - len(df_clean)
 
 print(f"  Filas antes:     {antes:,}")
 print(f"  Filas eliminadas: {eliminadas:,}")
 print(f"  Filas después:   {len(df_clean):,}")
 print(f"  Verificación — Description nulos restantes: {df_clean['Description'].isnull().sum()}")
+
+# 3.2 ELIMINAR DUPLICADOS EXACTOS
+#
+# Una fila duplicada exacta tiene TODOS sus campos idénticos: mismo InvoiceNo,
+# StockCode, Description, Quantity, UnitPrice, InvoiceDate, CustomerID y Country.
+# Esto es físicamente imposible en un sistema transaccional real: si el mismo cliente
+# compra el mismo producto en el mismo instante, el sistema generaría un InvoiceNo
+# distinto o un timestamp diferente. Su presencia indica errores de doble inserción
+# en la BBDD, exports corruptos o fallos de ETL.
+
+print("\n--- 3.2 Eliminar duplicados exactos ---")
+
+antes = len(df_clean)
+df_clean = df_clean.drop_duplicates(keep='first', ignore_index=True)
+eliminadas = antes - len(df_clean)
+
+print(f"  Filas antes:      {antes:,}")
+print(f"  Filas eliminadas: {eliminadas:,}")
+print(f"  Filas después:    {len(df_clean):,}")
+print(f"  Verificación — duplicados restantes: {df_clean.duplicated().sum()}")
 
