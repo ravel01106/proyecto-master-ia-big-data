@@ -691,3 +691,34 @@ print(f"  Filas después:    {len(df_clean):,}")
 n_no_std = (~df_clean['StockCode'].str.match(r'^[0-9]{5}[A-Za-z]?$', na=False)).sum()
 print(f"  Verificación — StockCodes no estándar restantes: {n_no_std}")
 
+# 3.5 CAPPING (WINSORIZACIÓN) DE OUTLIERS EN Quantity Y UnitPrice
+#
+# IMPORTANTE — TotalPrice se recalcula al final:
+#   - df_clean heredó TotalPrice = Quantity × UnitPrice calculado ANTES del
+#     capping (sección 2.7 sobre df original). Si no lo recalculamos quedaría
+#     desincronizado con los nuevos valores de Quantity y UnitPrice.
+
+print("\n--- 3.5 Capping de outliers (winsorización al percentil 99) ---")
+
+cap_qty   = df_clean.loc[df_clean['Quantity']  > 0, 'Quantity'].quantile(0.99)
+cap_price = df_clean.loc[df_clean['UnitPrice'] > 0, 'UnitPrice'].quantile(0.99)
+
+print(f"  Umbral Quantity   (p99): {cap_qty:.1f} uds  →  clip [{-cap_qty:.1f}, {cap_qty:.1f}]")
+print(f"  Umbral UnitPrice  (p99): £{cap_price:.2f}  →  clip [-, {cap_price:.2f}]")
+
+n_qty_sup  = (df_clean['Quantity']  >  cap_qty).sum()
+n_qty_inf  = (df_clean['Quantity']  < -cap_qty).sum()
+n_price_sup = (df_clean['UnitPrice'] >  cap_price).sum()
+print(f"  Filas Quantity  > +umbral (recortadas arriba): {n_qty_sup:,}")
+print(f"  Filas Quantity  < -umbral (recortadas abajo):  {n_qty_inf:,}")
+print(f"  Filas UnitPrice > umbral  (recortadas arriba): {n_price_sup:,}")
+
+df_clean['Quantity']  = df_clean['Quantity'].clip(lower=-cap_qty, upper=cap_qty)
+df_clean['UnitPrice'] = df_clean['UnitPrice'].clip(upper=cap_price)
+
+# Recalcular TotalPrice con los valores ya capeados
+df_clean['TotalPrice'] = df_clean['Quantity'] * df_clean['UnitPrice']
+
+print(f"  Quantity  rango tras capping:  [{df_clean['Quantity'].min():.1f}, {df_clean['Quantity'].max():.1f}]")
+print(f"  UnitPrice máxima tras capping: £{df_clean['UnitPrice'].max():.2f}")
+print(f"  Filas totales (sin cambio):    {len(df_clean):,}")
