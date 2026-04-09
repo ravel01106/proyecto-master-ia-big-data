@@ -723,6 +723,9 @@ print(f"  Quantity  rango tras capping:  [{df_clean['Quantity'].min():.1f}, {df_
 print(f"  UnitPrice máxima tras capping: £{df_clean['UnitPrice'].max():.2f}")
 print(f"  Filas totales (sin cambio):    {len(df_clean):,}")
 
+print("\n  Estadísticas post-capping (validación de rangos):")
+print(df_clean[['Quantity', 'UnitPrice', 'TotalPrice']].describe().round(2))
+
 # 3.5b ELIMINAR FILAS CON UnitPrice = 0
 #
 # Tras los pasos 3.1–3.5, pueden quedar filas con UnitPrice = 0 que no son
