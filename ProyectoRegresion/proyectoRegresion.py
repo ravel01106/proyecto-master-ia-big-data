@@ -802,3 +802,45 @@ else:
 # Días sin datos esperados (festivos y fines de semana)
 print(f"\n  Días sin datos en todo el rango (esperados: festivos/fines de semana):")
 print(f"    {dias_sin_datos.strftime('%Y-%m-%d').tolist()}")
+
+# 3.9 DATASET LIMPIO
+#
+# Comparativa paso a paso de filas eliminadas y guardado del CSV limpio.
+
+print(f"\n\n{'='*60}")
+print(f"  RESUMEN LIMPIEZA — COMPARATIVA POR PASO")
+print(f"{'='*60}")
+
+pasos = [
+    ("Filas originales",                     filas_iniciales,           0),
+    ("3.1 Eliminar Description nula",        540_455,  filas_iniciales - 540_455),
+    ("3.2 Eliminar duplicados exactos",       535_187,  540_455 - 535_187),
+    ("3.3 Eliminar negativos huérfanos",      533_851,  535_187 - 533_851),
+    ("3.4 Eliminar StockCodes no estándar",   531_356,  533_851 - 531_356),
+    ("3.5 Capping outliers (sin eliminar)",   531_356,  0),
+    ("3.6 CustomerID nulo (conservar)",       531_356,  0),
+    ("3.7 Cancelaciones (conservar)",         531_356,  0),
+]
+
+print(f"\n  {'Paso':<42} {'Filas':>8}  {'Eliminadas':>10}")
+print(f"  {'-'*62}")
+for nombre, filas, eliminadas in pasos:
+    marca = "  " if eliminadas == 0 else "–>"
+    print(f"  {marca} {nombre:<40} {filas:>8,}  {eliminadas:>10,}")
+
+filas_finales   = len(df_clean)
+total_eliminado = filas_iniciales - filas_finales
+pct_eliminado   = total_eliminado / filas_iniciales * 100
+print(f"\n  {'TOTAL ELIMINADAS':<42} {total_eliminado:>8,}  ({pct_eliminado:.2f}%)")
+print(f"  {'FILAS FINALES EN df_clean':<42} {filas_finales:>8,}")
+
+# Guardar CSV limpio
+RUTA_CLEAN = 'contenidoCSV/data_clean.csv'
+df_clean.to_csv(RUTA_CLEAN, index=False, encoding='utf-8')
+
+print(f"\n--- 3.9 Dataset limpio guardado ---")
+print(f"  Ruta:            {RUTA_CLEAN}")
+print(f"  Filas:           {filas_finales:,}")
+print(f"  Columnas:        {df_clean.shape[1]}")
+print(f"  Columnas:        {list(df_clean.columns)}")
+print(f"  Memoria (MB):    {df_clean.memory_usage(deep=True).sum() / 1024**2:.1f}")
