@@ -747,6 +747,22 @@ print(f"  Filas eliminadas: {eliminadas:,}")
 print(f"  Filas después:    {len(df_clean):,}")
 print(f"  Verificación — filas con UnitPrice = 0 restantes: {(df_clean['UnitPrice'] == 0).sum()}")
 
+# 3.5c ELIMINAR FILAS CON Quantity = 0
+#
+# Una fila con Quantity = 0 genera TotalPrice = 0 siempre.
+# No es una venta (no transfiere producto) ni una cancelación (no devuelve nada).
+# No debería existir en un sistema transaccional real: indica errores de entrada
+# de datos o registros de ajuste sin impacto económico.
+
+print("\n--- 3.5c Eliminar filas con Quantity = 0 ---")
+antes = len(df_clean)
+df_clean = df_clean[df_clean['Quantity'] != 0].reset_index(drop=True)
+eliminadas = antes - len(df_clean)
+print(f"  Filas antes:      {antes:,}")
+print(f"  Filas eliminadas: {eliminadas:,}")
+print(f"  Filas después:    {len(df_clean):,}")
+print(f"  Verificación — filas con Quantity = 0 restantes: {(df_clean['Quantity'] == 0).sum()}")
+
 # 3.6 CONSERVAR FILAS CON CustomerID NULO
 #
 # Los ~135.080 registros sin CustomerID son ventas anónimas reales.
