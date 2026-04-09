@@ -738,3 +738,28 @@ pct = n_sin_cliente / len(df_clean) * 100
 print(f"  Filas con CustomerID nulo: {n_sin_cliente:,} ({pct:.2f}%)")
 print(f"  Decisión: se conservan — son ventas anónimas válidas para la variable objetivo")
 print(f"  Filas totales sin cambio:  {len(df_clean):,}")
+
+# 3.7 TRATAR CANCELACIONES (prefijo "C" en InvoiceNo)
+#
+# Las cancelaciones tienen Quantity < 0 → TotalPrice < 0.
+# NO se eliminan: al agregar por día con groupby('Fecha')['TotalPrice'].sum()
+# se restan automáticamente de las ventas brutas de ese día, dando la venta NETA real.
+# Ejemplo: si el lunes hay £10.000 en ventas y £500 en devoluciones,
+#          el agregado diario da £9.500 sin ninguna acción adicional.
+# Eliminarlas sobreestimaría las ventas diarias y el modelo aprendería
+# una señal irreal (ventas brutas en lugar de ventas netas).
+
+print("\n--- 3.7 Cancelaciones (prefijo C) — decisión: conservar con TotalPrice negativo ---")
+
+mask_cancel = df_clean['InvoiceNo'].str.startswith('C', na=False)
+n_cancel    = mask_cancel.sum()
+tp_cancel   = df_clean.loc[mask_cancel, 'TotalPrice'].sum()
+print(f"  Filas de cancelación en df_clean: {n_cancel:,}")
+print(f"  TotalPrice acumulado cancelaciones: £{tp_cancel:,.2f}")
+print(f"  Decisión: se conservan — el TotalPrice negativo reduce el agregado diario automáticamente")
+print(f"  Filas totales sin cambio: {len(df_clean):,}")
+
+# Verificación: ejemplo de un día con cancelaciones para confirmar el mecanismo
+ventas_netas_dia = df_clean.groupby('Fecha')['TotalPrice'].sum()
+dias_negativos   = (ventas_netas_dia < 0).sum()
+print(f"  Días con venta neta negativa (devoluciones > ventas brutas): {dias_negativos}")
