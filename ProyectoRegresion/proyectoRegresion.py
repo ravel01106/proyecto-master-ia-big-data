@@ -652,3 +652,27 @@ print(f"  Filas eliminadas: {eliminadas:,}")
 print(f"  Filas después:    {len(df_clean):,}")
 print(f"  Verificación — duplicados restantes: {df_clean.duplicated().sum()}")
 
+# 3.3 ELIMINAR NEGATIVOS HUÉRFANOS
+#
+# Son filas con Quantity < 0 pero SIN prefijo "C" en InvoiceNo.
+# El análisis directo del CSV confirma que el 100% cumple simultáneamente:
+#   - UnitPrice = 0.0  → TotalPrice = 0 siempre, sin impacto en ingresos
+#   - CustomerID = NaN → ninguna tiene cliente asociado
+#   - InvoiceNo sin "C" → el sistema nunca las registró como cancelación formal
+
+print("\n--- 3.3 Eliminar negativos huérfanos (ajustes de almacén) ---")
+
+antes = len(df_clean)
+mask_huerfanos = (
+    ~df_clean['InvoiceNo'].str.startswith('C', na=False) &
+    (df_clean['Quantity'] < 0) &
+    (df_clean['UnitPrice'] == 0.0)
+)
+df_clean = df_clean[~mask_huerfanos].reset_index(drop=True)
+eliminadas = antes - len(df_clean)
+
+print(f"  Filas antes:      {antes:,}")
+print(f"  Filas eliminadas: {eliminadas:,}")
+print(f"  Filas después:    {len(df_clean):,}")
+print(f"  Verificación — negativos huérfanos restantes: {(~df_clean['InvoiceNo'].str.startswith('C', na=False) & (df_clean['Quantity'] < 0) & (df_clean['UnitPrice'] == 0.0)).sum()}")
+
