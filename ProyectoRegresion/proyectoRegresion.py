@@ -763,3 +763,42 @@ print(f"  Filas totales sin cambio: {len(df_clean):,}")
 ventas_netas_dia = df_clean.groupby('Fecha')['TotalPrice'].sum()
 dias_negativos   = (ventas_netas_dia < 0).sum()
 print(f"  Días con venta neta negativa (devoluciones > ventas brutas): {dias_negativos}")
+
+# 3.8 VERIFICAR INTEGRIDAD TEMPORAL TRAS LA LIMPIEZA
+#
+# Comprobamos que los pasos 3.1–3.7 no han eliminado accidentalmente días
+# completos dentro del rango de entrenamiento (01/12/2010 → 08/11/2011)
+# ni dentro del test set (09/11/2011 → 09/12/2011).
+# Los días sin datos esperados son festivos y fines de semana — no días laborables.
+
+print("\n--- 3.8 Integridad temporal tras la limpieza ---")
+
+fechas_clean   = df_clean['Fecha'].drop_duplicates().sort_values()
+fecha_min      = fechas_clean.min()
+fecha_max      = fechas_clean.max()
+rango_completo = pd.date_range(start=fecha_min, end=fecha_max, freq='D')
+dias_sin_datos = rango_completo.difference(fechas_clean)
+
+print(f"  Fecha mínima en df_clean: {fecha_min.date()}")
+print(f"  Fecha máxima en df_clean: {fecha_max.date()}")
+print(f"  Días totales en el rango: {len(rango_completo)}")
+print(f"  Días con datos:           {len(fechas_clean)}")
+print(f"  Días sin datos:           {len(dias_sin_datos)}")
+
+# Verificar que el test set completo tiene datos
+TEST_INICIO = pd.Timestamp('2011-11-09')
+TEST_FIN    = pd.Timestamp('2011-12-09')
+dias_test   = pd.date_range(start=TEST_INICIO, end=TEST_FIN, freq='D')
+dias_test_sin_datos = dias_test.difference(fechas_clean)
+print(f"\n  Test set ({TEST_INICIO.date()} → {TEST_FIN.date()}):")
+print(f"    Días en el rango del test:      {len(dias_test)}")
+print(f"    Días con datos en el test set:  {len(dias_test) - len(dias_test_sin_datos)}")
+print(f"    Días SIN datos en el test set:  {len(dias_test_sin_datos)}")
+if len(dias_test_sin_datos) > 0:
+    print(f"    Días sin datos: {dias_test_sin_datos.strftime('%Y-%m-%d').tolist()}")
+else:
+    print(f"    ✓ Todos los días del test set tienen datos")
+
+# Días sin datos esperados (festivos y fines de semana)
+print(f"\n  Días sin datos en todo el rango (esperados: festivos/fines de semana):")
+print(f"    {dias_sin_datos.strftime('%Y-%m-%d').tolist()}")
