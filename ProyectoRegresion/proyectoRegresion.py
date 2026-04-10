@@ -1406,3 +1406,76 @@ print(df_daily[['Ventas_Lag1', 'Ventas_Lag7']].describe()
 print(f"\n  Columnas en df_daily ({len(df_daily.columns)} total):")
 print(f"  {list(df_daily.columns)}")
 print(f"\n  ✓ Lags añadidos. df_daily: {len(df_daily)} filas.")
+
+
+# ============================================================
+# 4.8  MEDIAS MÓVILES (ROLLING WINDOWS)
+# ============================================================
+
+# ── 4.8.1  Creación de medias móviles ───────────────────────────────────────
+# Ventas_Media_7d  → media de los últimos 7 días — captura la tendencia
+#                    de corto plazo (¿la semana pasada fue buena en conjunto?)
+# Ventas_Media_30d → media de los últimos 30 días — captura la tendencia
+#                    mensual y suaviza la estacionalidad semanal.
+#
+# Se usa min_periods=1 para evitar NaN adicionales: así, los primeros días
+# con menos de 7/30 observaciones disponibles calculan la media con lo que
+# hay en lugar de devolver NaN.
+# Nota: min_periods no genera NaN nuevos porque los 7 primeros días ya
+# fueron eliminados en el dropna del paso 4.7. No obstante, con
+# min_periods=1 garantizamos robustez si en el futuro se modifica el orden.
+
+print("\n\n--- 4.8 Medias móviles (rolling windows) ---")
+
+df_daily['Ventas_Media_7d']  = (
+    df_daily['Ventas'].rolling(window=7,  min_periods=1).mean()
+)
+df_daily['Ventas_Media_30d'] = (
+    df_daily['Ventas'].rolling(window=30, min_periods=1).mean()
+)
+
+# ── 4.8.2  Verificación de NaN ───────────────────────────────────────────────
+n_nan_7d  = df_daily['Ventas_Media_7d'].isna().sum()
+n_nan_30d = df_daily['Ventas_Media_30d'].isna().sum()
+print(f"\n  NaN en Ventas_Media_7d:  {n_nan_7d}   (esperado: 0 con min_periods=1)")
+print(f"  NaN en Ventas_Media_30d: {n_nan_30d}  (esperado: 0 con min_periods=1)")
+
+# ── 4.8.3  Primeras filas para inspección visual ─────────────────────────────
+print(f"\n  Primeras 12 filas con medias móviles:")
+cols_roll = ['Fecha', 'Ventas', 'Ventas_Media_7d', 'Ventas_Media_30d']
+print(df_daily[cols_roll].head(12).to_string(index=False))
+
+# ── 4.8.4  Validación manual de Ventas_Media_7d ──────────────────────────────
+# rolling(window=7) en fila 7 usa filas [1..7] (las 7 últimas incluyendo la actual)
+print(f"\n  Validación manual de Ventas_Media_7d en fila 7:")
+media_manual = df_daily.loc[1:7, 'Ventas'].mean()
+media_stored = df_daily.loc[7, 'Ventas_Media_7d']
+ok = '✓' if abs(media_manual - media_stored) < 0.01 else '✗'
+print(f"  Media manual filas 1–7: {media_manual:>12,.2f}")
+print(f"  Valor almacenado [7]:   {media_stored:>12,.2f}  {ok}")
+
+# ── 4.8.5  Gráfica: Ventas vs medias móviles ─────────────────────────────────
+fig, ax = plt.subplots(figsize=(14, 5))
+ax.plot(df_daily['Fecha'], df_daily['Ventas'],
+        color='steelblue', linewidth=0.8, alpha=0.6, label='Ventas diarias')
+ax.plot(df_daily['Fecha'], df_daily['Ventas_Media_7d'],
+        color='orange', linewidth=1.5, label='Media 7 días')
+ax.plot(df_daily['Fecha'], df_daily['Ventas_Media_30d'],
+        color='red', linewidth=2.0, label='Media 30 días')
+ax.set_title('4.8 — Ventas diarias vs medias móviles (7d y 30d)', fontsize=13)
+ax.set_xlabel('Fecha')
+ax.set_ylabel('Ventas (£)')
+ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda x, _: f'£{x:,.0f}'))
+ax.legend()
+plt.tight_layout()
+plt.savefig(f'{RUTA_GRAFICOS}4.8_medias_moviles.png', dpi=150)
+plt.show()
+
+# ── 4.8.6  Estadísticas de las medias móviles ────────────────────────────────
+print(f"\n  Estadísticas de las medias móviles:")
+print(df_daily[['Ventas_Media_7d', 'Ventas_Media_30d']].describe()
+      .map(lambda x: f"{x:>12,.2f}").to_string())
+
+print(f"\n  Columnas en df_daily ({len(df_daily.columns)} total):")
+print(f"  {list(df_daily.columns)}")
+print(f"\n  ✓ Medias móviles añadidas. df_daily: {len(df_daily)} filas.")
