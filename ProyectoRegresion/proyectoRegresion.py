@@ -1603,3 +1603,101 @@ print(f"    Nominales (OHE)        : {len(cols_ohe)}")
 print(f"    Fecha                  :  1  (índice temporal — no se codifica)")
 print(f"    Total columnas df_daily: {len(df_daily.columns)}")
 print("\n  ✓ Inventario completado. Listo para 5.2 (prueba sklearn).")
+
+# 5.2  PRUEBA SKLEARN: LabelEncoder vs OHE vs Cíclico en DiaSemana
+
+print("\n--- 5.2 Prueba sklearn: LabelEncoder vs OHE vs Cíclico en DiaSemana ---\n")
+
+from sklearn.preprocessing import LabelEncoder, OneHotEncoder
+
+diasemana_vals = df_daily[['DiaSemana']].copy().reset_index(drop=True)
+
+# ── 5.2.1  LabelEncoder ───────────────────────────────────────────────────────
+le = LabelEncoder()
+diasemana_vals['LE'] = le.fit_transform(diasemana_vals['DiaSemana'])
+
+print("  5.2.1  LabelEncoder:")
+print("  Asigna un entero a cada categoría — mantiene el orden original.")
+print(f"  Clases: {list(le.classes_)}  →  valores: {list(range(len(le.classes_)))}")
+print("  Problema: implica orden numérico (0<1<2...) y distancias falsas.")
+print("  Ejemplo: Lun(0) - Dom(6) = 6, pero realmente son días adyacentes.\n")
+
+# ── 5.2.2  OneHotEncoder ──────────────────────────────────────────────────────
+ohe = OneHotEncoder(sparse_output=False, drop='first')
+ohe_array = ohe.fit_transform(diasemana_vals[['DiaSemana']])
+ohe_cols = [f'DiaSemana_OHE_{int(c)}' for c in ohe.categories_[0][1:]]
+
+print("  5.2.2  OneHotEncoder (drop='first'):")
+print(f"  Genera {len(ohe_cols)} columnas binarias — elimina orden falso.")
+print(f"  Columnas: {ohe_cols}")
+print("  Problema: no captura la CONTINUIDAD cíclica.")
+print("  Dom(6) y Lun(0) son días consecutivos pero el modelo los ve como lejanos.\n")
+
+# ── 5.2.3  Codificación cíclica (sin/cos) ────────────────────────────────────
+periodo = 7
+diasemana_vals['DiaSemana_sin'] = np.sin(2 * np.pi * diasemana_vals['DiaSemana'] / periodo)
+diasemana_vals['DiaSemana_cos'] = np.cos(2 * np.pi * diasemana_vals['DiaSemana'] / periodo)
+
+print("  5.2.3  Codificación cíclica (sin/cos):")
+print(f"  Fórmula: sin(2π·DiaSemana/7) y cos(2π·DiaSemana/7)")
+print()
+print(f"  {'DiaSemana':<12} {'sin':>8} {'cos':>8}  Nombre")
+dias_nombres = {0:'Lunes', 1:'Martes', 2:'Miércoles', 3:'Jueves',
+                4:'Viernes', 5:'Sábado', 6:'Domingo'}
+for d in range(7):
+    s = np.sin(2 * np.pi * d / periodo)
+    c = np.cos(2 * np.pi * d / periodo)
+    print(f"  {d:<12} {s:>8.4f} {c:>8.4f}  {dias_nombres[d]}")
+
+# ── 5.2.4  Comparativa de distancias ─────────────────────────────────────────
+print("\n  5.2.4  Distancia Lunes(0) ↔ Domingo(6):")
+d_label     = abs(6 - 0)
+d_ciclica   = np.sqrt((np.sin(2*np.pi*6/7) - np.sin(2*np.pi*0/7))**2 +
+                       (np.cos(2*np.pi*6/7) - np.cos(2*np.pi*0/7))**2)
+d_adyacente = np.sqrt((np.sin(2*np.pi*1/7) - np.sin(2*np.pi*0/7))**2 +
+                       (np.cos(2*np.pi*1/7) - np.cos(2*np.pi*0/7))**2)
+print(f"    LabelEncoder  Lun↔Dom = {d_label}      (parece muy lejanos)")
+print(f"    Cíclica       Lun↔Dom = {d_ciclica:.4f}  (≈ Lun↔Mar = {d_adyacente:.4f}) ✓")
+
+# ── 5.2.5  Gráfica comparativa ────────────────────────────────────────────────
+fig, axes = plt.subplots(1, 3, figsize=(15, 4))
+fig.suptitle('5.2 — Comparativa de encodings para DiaSemana', fontsize=13)
+
+axes[0].bar(range(7), range(7), color='steelblue')
+axes[0].set_title('LabelEncoder')
+axes[0].set_xticks(range(7))
+axes[0].set_xticklabels(['L','M','X','J','V','S','D'])
+axes[0].set_ylabel('Valor asignado')
+axes[0].set_xlabel('Día de la semana')
+
+axes[1].imshow(ohe_array[:30].T, aspect='auto', cmap='Blues')
+axes[1].set_title('OneHotEncoder (6 cols, primeras 30 filas)')
+axes[1].set_xlabel('Fila del dataset')
+axes[1].set_yticks(range(len(ohe_cols)))
+axes[1].set_yticklabels([c.replace('DiaSemana_OHE_','Día ') for c in ohe_cols], fontsize=8)
+
+theta = np.linspace(0, 2*np.pi, 200)
+axes[2].plot(np.cos(theta), np.sin(theta), 'lightgray', lw=1)
+colors_dias = ['#1f77b4','#ff7f0e','#2ca02c','#d62728','#9467bd','#8c564b','#e377c2']
+for d in range(7):
+    s = np.sin(2 * np.pi * d / 7)
+    c = np.cos(2 * np.pi * d / 7)
+    axes[2].scatter(c, s, color=colors_dias[d], s=100, zorder=5)
+    axes[2].annotate(list('LMXJVSD')[d], (c, s),
+                     textcoords='offset points', xytext=(6, 4), fontsize=9)
+axes[2].set_title('Cíclico sin/cos')
+axes[2].set_aspect('equal')
+axes[2].axhline(0, color='gray', lw=0.5)
+axes[2].axvline(0, color='gray', lw=0.5)
+axes[2].set_xlabel('cos(2π·d/7)'); axes[2].set_ylabel('sin(2π·d/7)')
+
+plt.tight_layout()
+plt.savefig(f'{RUTA_GRAFICOS}5.2_encoding_comparativa.png', dpi=150)
+plt.show()
+
+# ── 5.2.6  Decisión ───────────────────────────────────────────────────────────
+print("\n  DECISIÓN:")
+print("    · LabelEncoder  → DESCARTADO: orden numérico falso.")
+print("    · OneHotEncoder → DESCARTADO: no captura continuidad cíclica.")
+print("    · sin/cos       → ELEGIDO: preserva circularidad del calendario.")
+print("\n  ✓ Prueba sklearn completada. Decisión justificada.")
