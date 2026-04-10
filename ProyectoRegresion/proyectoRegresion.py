@@ -1118,3 +1118,116 @@ cols_muestra = ['Fecha', 'Ventas', 'DiaSemana', 'EsFinDeSemana',
                 'Mes', 'Trimestre', 'SemanaMes', 'SemanaAnio']
 print(df_daily[cols_muestra].head(10).to_string(index=False))
 print(f"\n  ✓ Variables temporales extraídas y añadidas a df_daily.")
+
+# 4.4  ANÁLISIS Y LIMPIEZA DE LAS NUEVAS VARIABLES
+
+print("\n\n--- 4.4 Análisis y limpieza de las nuevas variables creadas ---")
+
+print("\n  -- 4.4.1 Outliers en variables numéricas (método IQR, días activos) --")
+print("  Nota: se excluyen los 69 días sin actividad (Ventas=0) para no distorsionar el IQR\n")
+
+cols_numericas = ['Ventas', 'NumTransacc', 'NumPedidos', 'NumClientes', 'UnidadesVendidas']
+df_activos = df_daily[df_daily['Ventas'] > 0].copy()
+
+fechas_outlier = {}
+
+for col in cols_numericas:
+    q1      = df_activos[col].quantile(0.25)
+    q3      = df_activos[col].quantile(0.75)
+    iqr     = q3 - q1
+    lim_inf = q1 - 1.5 * iqr
+    lim_sup = q3 + 1.5 * iqr
+    mask_out = (df_activos[col] > lim_sup) | (df_activos[col] < lim_inf)
+    n_out_sup = (df_activos[col] > lim_sup).sum()
+    n_out_inf = (df_activos[col] < lim_inf).sum()
+    fechas_outlier[col] = df_activos.loc[mask_out, 'Fecha'].dt.date.tolist()
+
+    print(f"  {col}:")
+    print(f"    Q1={q1:>10,.2f}  Q3={q3:>10,.2f}  IQR={iqr:>10,.2f}")
+    print(f"    Límite inf={lim_inf:>10,.2f}  Límite sup={lim_sup:>10,.2f}")
+    print(f"    Outliers superiores: {n_out_sup:>3}  |  Outliers inferiores: {n_out_inf:>3}")
+    if fechas_outlier[col]:
+        print(f"    Fechas afectadas: {fechas_outlier[col]}")
+    print()
+
+# ── 4.4.2  Boxplots de variables numéricas ──────────────────────────────────
+fig, axes = plt.subplots(1, 5, figsize=(18, 5))
+for i, col in enumerate(cols_numericas):
+    axes[i].boxplot(df_activos[col].values, patch_artist=True,
+                    boxprops=dict(facecolor='steelblue', alpha=0.6),
+                    medianprops=dict(color='orange', linewidth=2))
+    axes[i].set_title(col, fontsize=11)
+    axes[i].set_ylabel('')
+fig.suptitle('4.4 — Boxplots de variables numéricas (días activos, n=305)', fontsize=13)
+plt.tight_layout()
+plt.savefig(f'{RUTA_GRAFICOS}4.4_boxplots_variables_diarias.png', dpi=150)
+plt.show()
+
+# ── 4.4.3  Verificar rangos de variables temporales ─────────────────────────
+print("\n  -- 4.4.3 Verificación de rangos en variables temporales --")
+rangos_esperados = {
+    'DiaSemana':     (0, 6),
+    'EsFinDeSemana': (0, 1),
+    'Mes':           (1, 12),
+    'Trimestre':     (1, 4),
+    'SemanaMes':     (1, 5),
+    'DiaAnio':       (1, 366),
+    'SemanaAnio':    (1, 53),
+}
+todo_ok = True
+for col, (min_esp, max_esp) in rangos_esperados.items():
+    min_real = int(df_daily[col].min())
+    max_real = int(df_daily[col].max())
+    ok = min_real >= min_esp and max_real <= max_esp
+    estado = '✓' if ok else '✗ FUERA DE RANGO'
+    if not ok:
+        todo_ok = False
+    print(f"  {col:<16}: esperado [{min_esp:>3}, {max_esp:>3}]  →  real [{min_real:>3}, {max_real:>3}]  {estado}")
+print(f"\n  {'✓ Todas las variables temporales dentro de rango esperado.' if todo_ok else '✗ Revisar columnas marcadas.'}")
+
+# ── 4.4.4  Análisis de variables categóricas ────────────────────────────────
+print("\n  -- 4.4.4 Análisis de variables categóricas --")
+
+print("\n  ProductoTopDia — top 15 más frecuentes:")
+freq_prod  = df_daily['ProductoTopDia'].value_counts()
+raros_prod = freq_prod[(freq_prod <= 2) & (freq_prod.index != 'Sin_Actividad')]
+print(freq_prod.head(15).to_string())
+print(f"\n  Productos únicos (excl. Sin_Actividad): "
+      f"{(freq_prod.index != 'Sin_Actividad').sum()}")
+print(f"  Productos con ≤2 apariciones (raros): {len(raros_prod)}")
+if len(raros_prod) > 0:
+    print(f"  → Productos raros: {raros_prod.index.tolist()}")
+
+print("\n  PaisTopDia — distribución completa:")
+print(df_daily['PaisTopDia'].value_counts().to_string())
+n_uk      = (df_daily['PaisTopDia'] == 'United Kingdom').sum()
+n_activos = (df_daily['Ventas'] > 0).sum()
+print(f"\n  'United Kingdom' domina {n_uk}/{n_activos} días activos "
+      f"({n_uk/n_activos*100:.1f}%) → varianza prácticamente nula → se eliminará en 4.6")
+
+# ── 4.4.5  Decisión y conclusión ────────────────────────────────────────────
+print("\n  -- 4.4.5 Decisión sobre tratamiento de outliers --")
+print("""
+  Análisis realizado:
+    · Los outliers en 'Ventas' y métricas de volumen corresponden a días
+      de alta actividad real (pico pre-navideño, Black Friday 2011).
+      No son errores de datos: el dataset de e-commerce tiene marcada
+      estacionalidad en el Q4 (octubre–diciembre).
+    · df_daily solo tiene 374 filas (305 activos) → eliminar filas
+      empeoraría el modelo por pérdida de información crítica.
+    · Capear 'Ventas' eliminaría la señal estacional que el modelo
+      debe aprender a predecir.
+    · Las variables de volumen (NumTransacc, NumPedidos, etc.) son
+      proporcionales a Ventas; capear unas y no otras produce
+      inconsistencias internas.
+    · Las variables temporales están dentro de sus rangos esperados.
+    · 'PaisTopDia' se marcará para eliminación en 4.6 (varianza ≈ 0).
+
+  Decisión: NO se aplica capping ni eliminación en df_daily.
+    → Los outliers son eventos reales que forman parte del patrón
+      temporal que el modelo debe aprender.
+    → Las ventanas rolling (4.8) y lags (4.7) incorporarán el contexto
+      histórico y suavizarán la señal para el modelo.
+""")
+print(f"  ✓ df_daily sin cambios estructurales: {len(df_daily)} filas, "
+      f"{len(df_daily.columns)} columnas.")
