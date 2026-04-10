@@ -2,6 +2,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
 import seaborn as sns
+import numpy as np
 
 # 1. CARGA DEL DATASET
 
@@ -1231,3 +1232,131 @@ print("""
 """)
 print(f"  ✓ df_daily sin cambios estructurales: {len(df_daily)} filas, "
       f"{len(df_daily.columns)} columnas.")
+
+
+# ============================================================
+# 4.6  ANÁLISIS DE CORRELACIÓN Y SELECCIÓN DE VARIABLES
+# ============================================================
+print("\n\n--- 4.6 Análisis de correlación y selección de variables ---")
+print("\n  -- 4.6.1 Correlación de Pearson con 'Ventas' (variables numéricas) --")
+print("  Nota: se usan los 374 días completos (incluye ceros de días inactivos)\n")
+
+cols_correlacion = [
+    'NumTransacc', 'NumPedidos', 'NumClientes', 'UnidadesVendidas',
+    'DiaSemana', 'EsFinDeSemana', 'Mes', 'Trimestre',
+    'SemanaMes', 'DiaAnio', 'SemanaAnio'
+]
+
+correlaciones = (
+    df_daily[cols_correlacion + ['Ventas']]
+    .corr()['Ventas']
+    .drop('Ventas')
+    .sort_values(key=abs, ascending=False)
+)
+
+print(f"  {'Variable':<20} {'Correlación':>12}  {'Interpretación'}")
+print(f"  {'-'*60}")
+for var, corr in correlaciones.items():
+    if abs(corr) >= 0.5:
+        nivel = 'Alta'
+    elif abs(corr) >= 0.3:
+        nivel = 'Moderada'
+    elif abs(corr) >= 0.1:
+        nivel = 'Baja'
+    else:
+        nivel = 'Muy baja / irrelevante'
+    print(f"  {var:<20} {corr:>12.4f}  {nivel}")
+
+# ── 4.6.2  Correlación de Spearman (más robusta ante outliers) ───────────────
+print("\n  -- 4.6.2 Correlación de Spearman con 'Ventas' (más robusta ante outliers) --\n")
+
+correlaciones_sp = (
+    df_daily[cols_correlacion + ['Ventas']]
+    .corr(method='spearman')['Ventas']
+    .drop('Ventas')
+    .sort_values(key=abs, ascending=False)
+)
+
+print(f"  {'Variable':<20} {'Pearson':>10} {'Spearman':>10}  {'Δ (abs)':>8}")
+print(f"  {'-'*55}")
+for var in correlaciones_sp.index:
+    p  = correlaciones[var]   if var in correlaciones.index   else float('nan')
+    sp = correlaciones_sp[var]
+    print(f"  {var:<20} {p:>10.4f} {sp:>10.4f}  {abs(abs(sp)-abs(p)):>8.4f}")
+
+# ── 4.6.3  Heatmap de correlaciones ─────────────────────────────────────────
+cols_heatmap = cols_correlacion + ['Ventas']
+corr_matrix  = df_daily[cols_heatmap].corr()
+
+fig, ax = plt.subplots(figsize=(13, 10))
+mascara = np.triu(np.ones_like(corr_matrix, dtype=bool), k=1)
+sns.heatmap(
+    corr_matrix,
+    mask=mascara,
+    annot=True, fmt='.2f', annot_kws={'size': 8},
+    cmap='coolwarm', center=0, vmin=-1, vmax=1,
+    linewidths=0.5, ax=ax
+)
+ax.set_title('4.6 — Matriz de correlación (Pearson) — df_daily', fontsize=13)
+plt.tight_layout()
+plt.savefig(f'{RUTA_GRAFICOS}4.6_correlacion_heatmap.png', dpi=150)
+plt.show()
+
+# ── 4.6.4  Análisis de variables categóricas vs Ventas ───────────────────────
+print("\n  -- 4.6.4 Varianza de PaisTopDia y ProductoTopDia vs Ventas --")
+
+# PaisTopDia — varianza prácticamente nula (UK 305/305)
+var_pais = df_daily['PaisTopDia'].nunique()
+print(f"\n  PaisTopDia: {var_pais} valores únicos → varianza ≈ 0 → candidata a eliminar")
+
+# ProductoTopDia — medias de Ventas por categoría top-10
+print(f"\n  Ventas media por ProductoTopDia (top 10 más frecuentes):")
+media_prod = (
+    df_daily[df_daily['ProductoTopDia'] != 'Sin_Actividad']
+    .groupby('ProductoTopDia')['Ventas']
+    .agg(['mean', 'count'])
+    .sort_values('count', ascending=False)
+    .head(10)
+    .rename(columns={'mean': 'Ventas_Media', 'count': 'N_dias'})
+)
+print(media_prod.to_string())
+
+# ── 4.6.5  Multicolinealidad entre variables de volumen ──────────────────────
+print("\n  -- 4.6.5 Multicolinealidad entre variables de volumen --")
+cols_volumen = ['NumTransacc', 'NumPedidos', 'NumClientes', 'UnidadesVendidas']
+corr_vol = df_daily[cols_volumen].corr().round(3)
+print(f"\n  Matriz de correlación entre variables de volumen:")
+print(corr_vol.to_string())
+print(f"\n  Nota: correlaciones muy altas (>0.95) indican redundancia.")
+
+# ── 4.6.6  Decisión y variables descartadas ──────────────────────────────────
+print("\n  -- 4.6.6 Decisión de selección de variables --")
+
+VARS_ELIMINAR = ['PaisTopDia']
+
+print(f"""
+  Variables ELIMINADAS de df_daily:
+    · PaisTopDia        → UK 305/305 días activos (100%); varianza ≈ 0;
+                          no aporta información al modelo.
+
+  Variables CONSERVADAS con observaciones:
+    · NumTransacc, NumPedidos, NumClientes, UnidadesVendidas
+                        → Alta correlación con Ventas. Son redundantes entre sí
+                          (multicolinealidad alta), pero se conservan todas ahora
+                          y se dejará que los modelos con regularización (Ridge,
+                          Lasso) las gestionen en la fase de modelado.
+    · DiaAnio, SemanaAnio, Mes, Trimestre
+                        → Capturan la tendencia y estacionalidad anual.
+    · DiaSemana, EsFinDeSemana
+                        → Capturan el patrón semanal (fines de semana = 0 ventas).
+    · SemanaMes         → Correlación baja; se conserva por si aporta
+                          señal en combinación con otras variables.
+    · ProductoTopDia    → Se conserva; el encoding se hará en el bloque
+                          de codificación (agrupando raros en 'Otros').
+""")
+
+df_daily = df_daily.drop(columns=VARS_ELIMINAR)
+
+print(f"  Columnas finales en df_daily ({len(df_daily.columns)} total):")
+print(f"  {list(df_daily.columns)}")
+print(f"\n  ✓ Selección de variables completada. df_daily listo para lags y rolling windows.")
