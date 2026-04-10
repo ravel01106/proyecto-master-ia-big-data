@@ -1001,3 +1001,80 @@ print(df_daily.head(10).to_string(index=False))
 print(f"\n  Estadísticas de la variable objetivo 'Ventas' (£) — venta neta:")
 print(df_daily['Ventas'].describe().apply(lambda x: f"    {x:>12,.2f}").to_string())
 print(f"\n  ✓ df_daily creado con {len(df_daily)} filas. Listo para las transformaciones siguientes.")
+
+# 4.2 CREACIÓN DE VARIABLES CATEGÓRICAS DE RESUMEN DIARIO
+#
+# Se añaden al df_daily tres variables que capturan información cualitativa
+# del día que los simples agregados numéricos no recogen:
+#
+#   ProductoTopDia  → StockCode más vendido (por unidades) cada día.
+#                     Puede indicar campañas, estacionalidad de producto o
+#                     picos de demanda de un artículo concreto.
+#
+#   PaisTopDia      → País con más transacciones ese día.
+#                     United Kingdom domina, pero los días con otro país
+#                     arriba pueden señalar pedidos mayoristas o patrones
+#                     de exportación.
+#
+#   NumClientes     → Ya creado en 4.1 como feature de volumen. No se duplica.
+#
+# Nota: estas variables son categóricas (texto). En el paso de codificación
+# (apartado 4.5) se convertirán a numéricas para el modelo.
+# Solo se calculan sobre ventas reales (EsCancelacion == False) para que
+# reflejen la demanda real del día, no las devoluciones.
+
+print("\n--- 4.2 Creación de variables categóricas de resumen diario ---")
+
+producto_top = (
+    df_solo_ventas
+    .groupby(['Fecha', 'StockCode'], sort=False)['Quantity']
+    .sum()
+    .reset_index()
+    .sort_values(['Fecha', 'Quantity'], ascending=[True, False])
+    .groupby('Fecha', sort=True)
+    .first()                          # primera fila por fecha = mayor Quantity
+    .rename(columns={'StockCode': 'ProductoTopDia'})
+    [['ProductoTopDia']]
+    .reset_index()
+)
+
+pais_top = (
+    df_solo_ventas
+    .groupby(['Fecha', 'Country'], sort=False)['InvoiceNo']
+    .count()
+    .reset_index()
+    .sort_values(['Fecha', 'InvoiceNo'], ascending=[True, False])
+    .groupby('Fecha', sort=True)
+    .first()
+    .rename(columns={'Country': 'PaisTopDia'})
+    [['PaisTopDia']]
+    .reset_index()
+)
+
+df_daily = (
+    df_daily
+    .merge(producto_top, on='Fecha', how='left')
+    .merge(pais_top,     on='Fecha', how='left')
+)
+
+# Los días sin actividad (Ventas = 0, relleno del reindex) quedan con NaN
+# en las variables categóricas. Se rellena con 'Sin_Actividad' para que
+# el modelo pueda tratar esos días como una categoría propia.
+df_daily['ProductoTopDia'] = df_daily['ProductoTopDia'].fillna('Sin_Actividad')
+df_daily['PaisTopDia']     = df_daily['PaisTopDia'].fillna('Sin_Actividad')
+
+# ── 4.2.4  Resultado ─────────────────────────────────────────────────────────
+
+print(f"\n  Columnas tras 4.2: {list(df_daily.columns)}")
+print(f"\n  Días sin actividad (categóricas = 'Sin_Actividad'): "
+      f"{(df_daily['ProductoTopDia'] == 'Sin_Actividad').sum()}")
+
+print(f"\n  Top 10 productos más frecuentes como 'ProductoTopDia':")
+print(df_daily['ProductoTopDia'].value_counts().head(10).to_string())
+
+print(f"\n  Top 10 países más frecuentes como 'PaisTopDia':")
+print(df_daily['PaisTopDia'].value_counts().head(10).to_string())
+
+print(f"\n  Primeras filas con nuevas columnas:")
+print(df_daily[['Fecha', 'Ventas', 'ProductoTopDia', 'PaisTopDia']].head(10).to_string(index=False))
+print(f"\n  ✓ Variables categóricas añadidas a df_daily.")
