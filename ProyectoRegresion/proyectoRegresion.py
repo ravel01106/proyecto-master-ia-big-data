@@ -901,3 +901,103 @@ dias_cero = (ventas_diarias_clean == 0).sum()
 print(f"\n  Días con ventas negativas (devoluciones > ventas): {dias_neg}  {'<-- revisar' if dias_neg > 0 else '✓ ninguno'}")
 print(f"  Días con ventas = 0:                               {dias_cero}  {'<-- revisar' if dias_cero > 0 else '✓ ninguno'}")
 print(f"\n  ✓ Variable objetivo lista para la sección 4 (transformación)")
+
+# 4. TRANSFORMACIÓN DE DATOS
+
+# 4.1 AGREGACIÓN DIARIA Y CREACIÓN DE LA VARIABLE OBJETIVO "Ventas"
+#
+# El dataset original tiene una fila por transacción (línea de pedido).
+# El modelo de regresión necesita trabajar a nivel de día:
+#   - Una fila por fecha.
+#   - La variable objetivo "Ventas" = VENTA NETA del día (ventas brutas − devoluciones).
+#
+# Decisión de diseño — coherente con el paso 3.7:
+#   Las cancelaciones (TotalPrice < 0) SE INCLUYEN en el cálculo de "Ventas".
+#   Esto produce la venta neta real (lo que queda en caja), que es la métrica
+#   relevante del negocio. Excluirlas produciría venta bruta e inflaría las
+#   predicciones de ingresos reales.
+#
+# Separación por tipo de agregación:
+#   - "Ventas"           → se calcula sobre TODO df_clean (ventas + cancelaciones).
+#   - Features de volumen → se calculan solo sobre ventas reales (EsCancelacion=False),
+#     ya que representan demanda: "cuántos clientes compraron hoy", no "cuántos
+#     compraron o devolvieron".
+
+print("\n\n=== 4. TRANSFORMACIÓN DE DATOS ===")
+print("\n--- 4.1 Agregación diaria y creación de la variable objetivo 'Ventas' ---")
+
+# ── 4.1.1  Asegurar que "Fecha" es de tipo datetime en df_clean ──────────────
+df_clean['Fecha'] = pd.to_datetime(df_clean['Fecha'])
+
+n_ventas    = (df_clean['EsCancelacion'] == False).sum()
+n_cancelac  = (df_clean['EsCancelacion'] == True).sum()
+print(f"\n  Filas en df_clean:       {len(df_clean):,}")
+print(f"    → Ventas reales:       {n_ventas:,}")
+print(f"    → Cancelaciones:       {n_cancelac:,}")
+print(f"  Decisión: Ventas = venta NETA (incluye cancelaciones como TotalPrice negativo)")
+
+ventas_netas = (
+    df_clean
+    .groupby('Fecha', sort=True)
+    .agg(Ventas = ('TotalPrice', 'sum'))
+    .reset_index()
+)
+
+# ── 4.1.3  Features de volumen: solo ventas reales ───────────────────────────
+#
+# Columnas generadas (excluyen cancelaciones para reflejar demanda real):
+#   NumTransacc      → líneas de venta del día
+#   NumPedidos       → pedidos únicos (InvoiceNo distintos)
+#   NumClientes      → clientes únicos (CustomerID distintos)
+#   UnidadesVendidas → unidades vendidas brutas
+
+df_solo_ventas = df_clean[df_clean['EsCancelacion'] == False]
+
+features_volumen = (
+    df_solo_ventas
+    .groupby('Fecha', sort=True)
+    .agg(
+        NumTransacc      = ('TotalPrice',  'count'),
+        NumPedidos       = ('InvoiceNo',   'nunique'),
+        NumClientes      = ('CustomerID',  'nunique'),
+        UnidadesVendidas = ('Quantity',    'sum'),
+    )
+    .reset_index()
+)
+
+df_daily = ventas_netas.merge(features_volumen, on='Fecha', how='left')
+
+# ── 4.1.5  Asegurar continuidad del índice temporal ──────────────────────────
+#
+# Si hay días sin ninguna transacción, groupby los omite y se crearían huecos
+# en la serie temporal. Se rellena con 0 para garantizar una serie contigua,
+# necesario para los lags y medias móviles de los apartados 4.7 y 4.8.
+
+rango_completo = pd.date_range(
+    start=df_daily['Fecha'].min(),
+    end=df_daily['Fecha'].max(),
+    freq='D'
+)
+
+df_daily = (
+    df_daily
+    .set_index('Fecha')
+    .reindex(rango_completo)
+    .rename_axis('Fecha')
+    .fillna(0)
+    .reset_index()
+)
+
+# ── 4.1.6  Resultado ─────────────────────────────────────────────────────────
+
+print(f"\n  Rango temporal:              {df_daily['Fecha'].min().date()} → {df_daily['Fecha'].max().date()}")
+print(f"  Días en el rango completo:   {len(rango_completo)}")
+print(f"  Días con Ventas > 0:         {(df_daily['Ventas'] > 0).sum()}")
+print(f"  Días con Ventas = 0 (hueco): {(df_daily['Ventas'] == 0).sum()}")
+print(f"  Días con Ventas < 0:         {(df_daily['Ventas'] < 0).sum()}  (devoluciones > ventas ese día)")
+print(f"\n  Columnas del dataframe diario: {list(df_daily.columns)}")
+print(f"\n  Primeras filas:")
+print(df_daily.head(10).to_string(index=False))
+print(f"\n  Estadísticas de la variable objetivo 'Ventas' (£) — venta neta:")
+print(df_daily['Ventas'].describe().apply(lambda x: f"    {x:>12,.2f}").to_string())
+print(f"\n  ✓ df_daily creado con {len(df_daily)} filas. Listo para las transformaciones siguientes.")
