@@ -1701,3 +1701,94 @@ print("    · LabelEncoder  → DESCARTADO: orden numérico falso.")
 print("    · OneHotEncoder → DESCARTADO: no captura continuidad cíclica.")
 print("    · sin/cos       → ELEGIDO: preserva circularidad del calendario.")
 print("\n  ✓ Prueba sklearn completada. Decisión justificada.")
+
+# 5.3  ENCODING CÍCLICO DEFINITIVO: DiaSemana y Mes
+print("\n--- 5.3 Encoding cíclico (sin/cos) para DiaSemana y Mes ---\n")
+
+# ── 5.3.1  DiaSemana (período 7) ──────────────────────────────────────────────
+df_daily['DiaSemana_sin'] = np.sin(2 * np.pi * df_daily['DiaSemana'] / 7)
+df_daily['DiaSemana_cos'] = np.cos(2 * np.pi * df_daily['DiaSemana'] / 7)
+
+# ── 5.3.2  Mes (período 12) ───────────────────────────────────────────────────
+df_daily['Mes_sin'] = np.sin(2 * np.pi * (df_daily['Mes'] - 1) / 12)
+df_daily['Mes_cos'] = np.cos(2 * np.pi * (df_daily['Mes'] - 1) / 12)
+
+# ── 5.3.3  Eliminar columnas originales ───────────────────────────────────────
+df_daily = df_daily.drop(columns=['DiaSemana', 'Mes'])
+
+# ── 5.3.4  Verificación ───────────────────────────────────────────────────────
+print("  Columnas nuevas creadas:")
+for col in ['DiaSemana_sin', 'DiaSemana_cos', 'Mes_sin', 'Mes_cos']:
+    nans = df_daily[col].isna().sum()
+    vmin = df_daily[col].min()
+    vmax = df_daily[col].max()
+    print(f"    · {col:<18} rango=[{vmin:>7.4f}, {vmax:>7.4f}]  NaN={nans}  ✓")
+
+assert df_daily['DiaSemana_sin'].between(-1, 1).all(), "ERROR: DiaSemana_sin fuera de [-1,1]"
+assert df_daily['DiaSemana_cos'].between(-1, 1).all(), "ERROR: DiaSemana_cos fuera de [-1,1]"
+assert df_daily['Mes_sin'].between(-1, 1).all(),       "ERROR: Mes_sin fuera de [-1,1]"
+assert df_daily['Mes_cos'].between(-1, 1).all(),       "ERROR: Mes_cos fuera de [-1,1]"
+
+assert 'DiaSemana' not in df_daily.columns, "ERROR: DiaSemana original no eliminada"
+assert 'Mes'       not in df_daily.columns, "ERROR: Mes original no eliminada"
+print("\n  Columnas originales eliminadas: DiaSemana ✓  Mes ✓")
+
+# ── 5.3.5  Verificación manual ────────────────────────────────────────────────
+# Lunes (DiaSemana=0): sin=0, cos=1  |  Enero (Mes=1): sin=0, cos=1
+lunes = df_daily[df_daily['DiaSemana_sin'].round(4) == 0.0].iloc[0]
+print(f"\n  Verificación manual — primera fila que era Lunes (DiaSemana=0):")
+print(f"    DiaSemana_sin = {lunes['DiaSemana_sin']:.4f}  (esperado ≈ 0.0000) ✓")
+print(f"    DiaSemana_cos = {lunes['DiaSemana_cos']:.4f}  (esperado ≈ 1.0000) ✓")
+
+# ── 5.3.6  Primeras filas con los nuevos encodings ────────────────────────────
+print(f"\n  Primeras 7 filas con encodings cíclicos:")
+cols_show = ['Fecha', 'DiaSemana_sin', 'DiaSemana_cos', 'Mes_sin', 'Mes_cos']
+print(df_daily[cols_show].head(7).to_string(index=False,
+      float_format=lambda x: f'{x:>8.4f}'))
+
+# ── 5.3.7  Estado actual de df_daily ─────────────────────────────────────────
+print(f"\n  Columnas en df_daily ({len(df_daily.columns)} total):")
+print(f"  {list(df_daily.columns)}")
+print(f"  Filas: {len(df_daily)}")
+print("\n  ✓ Encoding cíclico aplicado. DiaSemana y Mes reemplazados por sin/cos.")
+
+# 5.4  AGRUPACIÓN DE RAROS EN ProductoTopDia → "Otros"
+print("\n--- 5.4 Agrupación de productos raros en ProductoTopDia ---\n")
+
+UMBRAL_RAROS = 2
+freq_prod = df_daily['ProductoTopDia'].value_counts()
+productos_frecuentes = freq_prod[freq_prod > UMBRAL_RAROS].index.tolist()
+
+print(f"  Umbral: productos con ≤ {UMBRAL_RAROS} apariciones → 'Otros'")
+print(f"  Categorías antes de agrupar : {df_daily['ProductoTopDia'].nunique()}")
+print(f"  Productos frecuentes (> {UMBRAL_RAROS} apariciones): {len(productos_frecuentes)}")
+print(f"  Productos raros (≤ {UMBRAL_RAROS} apariciones)      : "
+      f"{df_daily['ProductoTopDia'].nunique() - len(productos_frecuentes)}")
+
+# ── 5.4.2  Aplicar agrupación ─────────────────────────────────────────────────
+df_daily['ProductoTopDia'] = df_daily['ProductoTopDia'].where(
+    df_daily['ProductoTopDia'].isin(productos_frecuentes), other='Otros'
+)
+
+n_cats_final = df_daily['ProductoTopDia'].nunique()
+print(f"\n  Categorías después de agrupar: {n_cats_final}")
+
+# ── 5.4.3  Distribución final de categorías ───────────────────────────────────
+print(f"\n  Distribución de ProductoTopDia tras agrupación:")
+dist = df_daily['ProductoTopDia'].value_counts()
+for cat, n in dist.items():
+    print(f"    {cat:<15} {n:>4} días  ({n/len(df_daily)*100:.1f}%)")
+
+# ── 5.4.4  Verificación ───────────────────────────────────────────────────────
+assert 'Otros' in df_daily['ProductoTopDia'].values, "ERROR: categoría 'Otros' no creada"
+assert df_daily['ProductoTopDia'].isna().sum() == 0, "ERROR: NaN en ProductoTopDia"
+n_raros_restantes = (df_daily['ProductoTopDia'].value_counts() <= UMBRAL_RAROS).sum()
+# Sin_Actividad y Otros pueden tener > UMBRAL_RAROS, así que verificamos que
+# no queda ninguna categoría de producto individual con ≤ umbral
+cats_raras_resto = [c for c in df_daily['ProductoTopDia'].value_counts().index
+                    if df_daily['ProductoTopDia'].value_counts()[c] <= UMBRAL_RAROS
+                    and c not in ['Otros', 'Sin_Actividad']]
+print(f"\n  Categorías individuales con ≤ {UMBRAL_RAROS} apariciones restantes: "
+      f"{len(cats_raras_resto)}  {'✓' if len(cats_raras_resto)==0 else '⚠ ' + str(cats_raras_resto)}")
+print(f"  NaN en ProductoTopDia: {df_daily['ProductoTopDia'].isna().sum()}  ✓")
+print(f"\n  ✓ Agrupación completada. ProductoTopDia: {n_cats_final} categorías finales.")
