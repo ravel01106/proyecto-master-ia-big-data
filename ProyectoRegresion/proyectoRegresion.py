@@ -1360,3 +1360,49 @@ df_daily = df_daily.drop(columns=VARS_ELIMINAR)
 print(f"  Columnas finales en df_daily ({len(df_daily.columns)} total):")
 print(f"  {list(df_daily.columns)}")
 print(f"\n  ✓ Selección de variables completada. df_daily listo para lags y rolling windows.")
+
+# 4.7  LAGS (RETRASOS TEMPORALES)
+print("\n\n--- 4.7 Lags (retrasos temporales) ---")
+
+df_daily['Ventas_Lag1'] = df_daily['Ventas'].shift(1)
+df_daily['Ventas_Lag7'] = df_daily['Ventas'].shift(7)
+
+n_nan_lag1 = df_daily['Ventas_Lag1'].isna().sum()
+n_nan_lag7 = df_daily['Ventas_Lag7'].isna().sum()
+
+print(f"\n  Lag1 — NaN generados: {n_nan_lag1}  (fila 0: sin día anterior)")
+print(f"  Lag7 — NaN generados: {n_nan_lag7}  (filas 0–6: sin semana anterior)")
+
+print(f"\n  Primeras 10 filas con lags (observar NaN iniciales):")
+cols_lag = ['Fecha', 'Ventas', 'Ventas_Lag1', 'Ventas_Lag7']
+print(df_daily[cols_lag].head(10).to_string(index=False))
+
+# ── 4.7.3  Eliminar filas con NaN (las primeras 7) ───────────────────────────
+filas_antes = len(df_daily)
+df_daily = df_daily.dropna(subset=['Ventas_Lag1', 'Ventas_Lag7']).reset_index(drop=True)
+filas_despues = len(df_daily)
+
+print(f"\n  Filas antes de dropna: {filas_antes}")
+print(f"  Filas eliminadas:      {filas_antes - filas_despues}  "
+      f"({df_daily['Fecha'].min().date()} es ahora la primera fila)")
+print(f"  Filas tras dropna:     {filas_despues}")
+
+# ── 4.7.4  Validación de los valores de lag ──────────────────────────────────
+print(f"\n  Validación — muestra aleatoria de consistencia (Ventas_Lag1):")
+idx_check = [10, 20, 50]
+for i in idx_check:
+    fecha_actual  = df_daily.loc[i, 'Fecha']
+    ventas_actual = df_daily.loc[i, 'Ventas']
+    lag1_almac    = df_daily.loc[i, 'Ventas_Lag1']
+    ventas_ayer   = df_daily.loc[i - 1, 'Ventas']
+    ok = '✓' if abs(lag1_almac - ventas_ayer) < 0.01 else '✗'
+    print(f"  [{i}] {fecha_actual.date()}  Ventas={ventas_actual:>10,.2f} "
+          f" Lag1={lag1_almac:>10,.2f}  Ventas[i-1]={ventas_ayer:>10,.2f}  {ok}")
+
+print(f"\n  Estadísticas de los lags:")
+print(df_daily[['Ventas_Lag1', 'Ventas_Lag7']].describe()
+      .map(lambda x: f"{x:>12,.2f}").to_string())
+
+print(f"\n  Columnas en df_daily ({len(df_daily.columns)} total):")
+print(f"  {list(df_daily.columns)}")
+print(f"\n  ✓ Lags añadidos. df_daily: {len(df_daily)} filas.")
