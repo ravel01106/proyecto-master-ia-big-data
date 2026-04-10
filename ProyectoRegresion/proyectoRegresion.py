@@ -1532,3 +1532,74 @@ print(f"    Columnas: {len(df_daily.columns)}")
 print(f"    Columnas: {list(df_daily.columns)}")
 
 print("\n  ✓ Sección 4 (Transformación) completada.")
+
+#  5.  ENCODING DE VARIABLES CATEGÓRICAS 
+
+# 5.1  INVENTARIO DE COLUMNAS — CLASIFICACIÓN POR TIPO DE ENCODING       
+
+print("\n\n=== 5. ENCODING DE VARIABLES CATEGÓRICAS ===")
+print("\n--- 5.1 Inventario: clasificación por tipo de encoding ---\n")
+
+cols_numericas = [
+    'Ventas',            # variable objetivo — sin cambio
+    'NumTransacc',       # volumen — numérica continua
+    'NumPedidos',        # volumen — numérica continua
+    'NumClientes',       # volumen — numérica continua
+    'UnidadesVendidas',  # volumen — numérica continua
+    'Trimestre',         # ordinal numérica (1–4)
+    'SemanaMes',         # ordinal numérica (1–5)
+    'DiaAnio',           # ordinal numérica (1–365)
+    'SemanaAnio',        # ordinal numérica (1–52)
+    'EsFinDeSemana',     # binaria (0/1) — ya codificada
+    'Es_Navidad',        # binaria (0/1) — ya codificada
+    'Dias_para_Navidad', # numérica discreta (0–30)
+    'Ventas_Lag1',       # lag numérico
+    'Ventas_Lag7',       # lag numérico
+    'Ventas_Media_7d',   # rolling numérico
+    'Ventas_Media_30d',  # rolling numérico
+]
+
+cols_ciclicas = {
+    'DiaSemana': 7,   # período 7  → sin/cos
+    'Mes':       12,  # período 12 → sin/cos
+}
+
+cols_ohe = [
+    'ProductoTopDia',  # nominal, ~22 cats tras agrupar raros
+]
+
+# ── Verificación: todas las columnas de df_daily (excl. Fecha) clasificadas ───
+cols_clasificadas = set(cols_numericas) | set(cols_ciclicas.keys()) | set(cols_ohe)
+cols_df = set(df_daily.columns) - {'Fecha'}
+cols_sin_clasificar = cols_df - cols_clasificadas
+cols_extra = cols_clasificadas - cols_df
+
+print("  COLUMNAS NUMÉRICAS (sin cambio):")
+for c in cols_numericas:
+    print(f"    · {c:<22} dtype={df_daily[c].dtype}")
+
+print("\n  COLUMNAS CÍCLICAS (→ sin/cos):")
+for c, periodo in cols_ciclicas.items():
+    rango = f"[{df_daily[c].min():.0f}, {df_daily[c].max():.0f}]"
+    print(f"    · {c:<22} período={periodo}  rango={rango}")
+
+print("\n  COLUMNAS NOMINALES (→ OHE):")
+for c in cols_ohe:
+    n_cats = df_daily[c].nunique()
+    print(f"    · {c:<22} categorías únicas={n_cats}")
+
+if cols_sin_clasificar:
+    print(f"\n  ⚠ Columnas sin clasificar: {cols_sin_clasificar}")
+else:
+    print("\n  ✓ Todas las columnas clasificadas correctamente.")
+
+if cols_extra:
+    print(f"  ⚠ Columnas en clasificación no presentes en df_daily: {cols_extra}")
+
+print(f"\n  Resumen:")
+print(f"    Numéricas (sin cambio) : {len(cols_numericas)}")
+print(f"    Cíclicas  (sin/cos)    : {len(cols_ciclicas)}")
+print(f"    Nominales (OHE)        : {len(cols_ohe)}")
+print(f"    Fecha                  :  1  (índice temporal — no se codifica)")
+print(f"    Total columnas df_daily: {len(df_daily.columns)}")
+print("\n  ✓ Inventario completado. Listo para 5.2 (prueba sklearn).")
