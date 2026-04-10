@@ -1792,3 +1792,109 @@ print(f"\n  Categorías individuales con ≤ {UMBRAL_RAROS} apariciones restante
       f"{len(cats_raras_resto)}  {'✓' if len(cats_raras_resto)==0 else '⚠ ' + str(cats_raras_resto)}")
 print(f"  NaN en ProductoTopDia: {df_daily['ProductoTopDia'].isna().sum()}  ✓")
 print(f"\n  ✓ Agrupación completada. ProductoTopDia: {n_cats_final} categorías finales.")
+
+#  5.5  OHE CON SKLEARN PARA ProductoTopDia                                 
+print("\n--- 5.5 OneHotEncoder (sklearn) para ProductoTopDia ---\n")
+
+# ── 5.5.1  Ajustar y transformar ─────────────────────────────────────────────
+ohe_prod = OneHotEncoder(sparse_output=False, drop='first', dtype=int)
+ohe_prod_array = ohe_prod.fit_transform(df_daily[['ProductoTopDia']])
+
+categorias_ohe = ohe_prod.categories_[0]
+primera_cat    = categorias_ohe[0]
+ohe_prod_cols  = [f'Prod_{c}' for c in categorias_ohe[1:]]
+
+print(f"  Categorías en OHE (22 total, ordenadas alfabéticamente):")
+print(f"  {list(categorias_ohe)}")
+print(f"\n  Columna eliminada (drop='first'): '{primera_cat}'")
+print(f"  Columnas dummy generadas: {len(ohe_prod_cols)}")
+print(f"  {ohe_prod_cols}")
+
+# ── 5.5.2  Añadir columnas dummy al dataframe ─────────────────────────────────
+df_ohe = pd.DataFrame(ohe_prod_array, columns=ohe_prod_cols,
+                      index=df_daily.index)
+df_daily = pd.concat([df_daily.drop(columns=['ProductoTopDia']), df_ohe], axis=1)
+
+# ── 5.5.3  Verificación ───────────────────────────────────────────────────────
+print(f"\n  Verificación:")
+print(f"    Columnas dummy con NaN    : "
+      f"{df_daily[ohe_prod_cols].isna().sum().sum()}  ✓")
+print(f"    Valores distintos de 0/1  : "
+      f"{(~df_daily[ohe_prod_cols].isin([0,1])).sum().sum()}  ✓")
+print(f"    Suma por fila (debe ser 0 o 1 — 0 para la cat. eliminada):")
+suma_filas = df_daily[ohe_prod_cols].sum(axis=1)
+print(f"      min={suma_filas.min()}  max={suma_filas.max()}  "
+      f"(0 = fila con categoría '{primera_cat}', 1 = cualquier otra)  ✓")
+
+# ── 5.5.4  Primeras filas con las nuevas columnas ────────────────────────────
+print(f"\n  Primeras 5 filas — columnas dummy (solo las que tienen algún 1):")
+cols_con_uno = [c for c in ohe_prod_cols if df_daily[c].head(10).sum() > 0]
+print(df_daily[['Fecha'] + cols_con_uno].head(5).to_string(index=False))
+
+# ── 5.5.5  Estado final ───────────────────────────────────────────────────────
+print(f"\n  df_daily: {len(df_daily)} filas, {len(df_daily.columns)} columnas")
+print(f"  Columnas totales: {list(df_daily.columns)}")
+print(f"\n  ✓ OHE completado. ProductoTopDia reemplazado por {len(ohe_prod_cols)} columnas dummy.")
+
+#  5.6  RESUMEN FINAL Y GUARDADO DE df_encoded
+
+print("\n--- 5.6 Resumen final y guardado de df_encoded ---\n")
+
+df_encoded = df_daily.copy()
+
+print(f"  Shape: {df_encoded.shape}  ({df_encoded.shape[0]} filas × {df_encoded.shape[1]} columnas)")
+
+cols_float  = [c for c in df_encoded.columns if df_encoded[c].dtype == 'float64']
+cols_int    = [c for c in df_encoded.columns if df_encoded[c].dtype in ('int32','int64')]
+cols_object = [c for c in df_encoded.columns if df_encoded[c].dtype == 'object']
+cols_fecha  = [c for c in df_encoded.columns if str(df_encoded[c].dtype).startswith('datetime')]
+
+print(f"\n  Tipos de datos:")
+print(f"    float64  : {len(cols_float):>2}  {cols_float}")
+print(f"    int32/64 : {len(cols_int):>2}  {cols_int}")
+print(f"    datetime : {len(cols_fecha):>2}  {cols_fecha}")
+print(f"    object   : {len(cols_object):>2}  {cols_object}  "
+      f"{'✓ ninguna' if len(cols_object)==0 else '⚠ deben ser 0'}")
+
+# ── 5.6.2  Verificación de NaN global ────────────────────────────────────────
+total_nan = df_encoded.drop(columns=['Fecha']).isna().sum().sum()
+print(f"\n  NaN totales (excl. Fecha): {total_nan}  "
+      f"{'✓' if total_nan == 0 else '⚠ revisar columnas con NaN'}")
+if total_nan > 0:
+    print(df_encoded.isna().sum()[df_encoded.isna().sum() > 0])
+
+# ── 5.6.3  Verificación de columnas dummy (rango [0,1]) ──────────────────────
+cols_dummy = [c for c in df_encoded.columns if c.startswith('Prod_')]
+out_rango  = (df_encoded[cols_dummy] > 1).sum().sum() + \
+             (df_encoded[cols_dummy] < 0).sum().sum()
+print(f"  Columnas dummy fuera de [0,1]: {out_rango}  "
+      f"{'✓' if out_rango == 0 else '⚠'}")
+
+# ── 5.6.4  Verificación de columnas cíclicas (rango [-1,1]) ──────────────────
+cols_ciclicas_enc = ['DiaSemana_sin', 'DiaSemana_cos', 'Mes_sin', 'Mes_cos']
+for c in cols_ciclicas_enc:
+    ok = df_encoded[c].between(-1, 1).all()
+    print(f"  {c:<20} rango=[{df_encoded[c].min():>7.4f}, "
+          f"{df_encoded[c].max():>7.4f}]  {'✓' if ok else '⚠'}")
+
+# ── 5.6.5  Resumen de transformaciones por sección ───────────────────────────
+print(f"\n  {'─'*60}")
+print(f"  RESUMEN DE ENCODING — COMPARATIVA")
+print(f"  {'─'*60}")
+print(f"  {'Sección':<10} {'Acción':<45} {'Resultado'}")
+print(f"  {'─'*60}")
+print(f"  {'5.1':<10} {'Inventario de columnas':<45} {'20 cols clasificadas'}")
+print(f"  {'5.2':<10} {'Prueba LabelEnc / OHE / cíclico':<45} {'→ sin/cos elegido'}")
+print(f"  {'5.3':<10} {'Encoding cíclico DiaSemana+Mes':<45} {'+4 cols, -2 cols'}")
+print(f"  {'5.4':<10} {'Agrupación raros ProductoTopDia':<45} {'109 → 22 cats'}")
+print(f"  {'5.5':<10} {'OHE ProductoTopDia (drop=first)':<45} {'+21 cols, -1 col'}")
+print(f"  {'─'*60}")
+print(f"  df_daily  → 20 cols  →  df_encoded: {df_encoded.shape[1]} cols")
+
+# ── 5.6.6  Guardado ───────────────────────────────────────────────────────────
+RUTA_ENCODED_CSV = 'contenidoCSV/data_encoded.csv'
+df_encoded.to_csv(RUTA_ENCODED_CSV, index=False)
+print(f"\n  ✓ df_encoded guardado en: {RUTA_ENCODED_CSV}")
+print(f"    Filas   : {df_encoded.shape[0]}")
+print(f"    Columnas: {df_encoded.shape[1]}")
+print(f"\n  ✓ Sección 5 (Encoding) completada.")
