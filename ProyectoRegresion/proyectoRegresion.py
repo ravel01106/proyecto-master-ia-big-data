@@ -1479,3 +1479,56 @@ print(df_daily[['Ventas_Media_7d', 'Ventas_Media_30d']].describe()
 print(f"\n  Columnas en df_daily ({len(df_daily.columns)} total):")
 print(f"  {list(df_daily.columns)}")
 print(f"\n  ✓ Medias móviles añadidas. df_daily: {len(df_daily)} filas.")
+
+#  4.9  EVENTOS ESPECIALES
+
+print("\n--- 4.9 Eventos especiales ---\n")
+
+df_daily['Es_Navidad'] = (
+    (df_daily['Fecha'].dt.month == 12) &
+    (df_daily['Fecha'].dt.day.between(20, 25))
+).astype(int)
+
+dias_navidad = df_daily['Es_Navidad'].sum()
+print(f"  Es_Navidad — días marcados: {dias_navidad}")
+print(df_daily.loc[df_daily['Es_Navidad'] == 1, ['Fecha', 'Ventas', 'Es_Navidad']].to_string(index=False))
+
+NAV_VENTANA = 30
+
+def dias_para_navidad(fecha):
+    navidad = pd.Timestamp(fecha.year, 12, 25)
+    delta = (navidad - fecha).days
+    if 0 < delta <= NAV_VENTANA:
+        return delta
+    return 0
+
+df_daily['Dias_para_Navidad'] = df_daily['Fecha'].apply(dias_para_navidad)
+
+print(f"\n  Dias_para_Navidad — distribución de valores > 0:")
+print(df_daily.loc[df_daily['Dias_para_Navidad'] > 0,
+                   ['Fecha', 'Ventas', 'Dias_para_Navidad']]
+      .sort_values('Fecha').to_string(index=False))
+
+# ── 4.9.3  Verificación de rangos ─────────────────────────────────────────────
+assert df_daily['Es_Navidad'].isin([0, 1]).all(), "ERROR: Es_Navidad contiene valores fuera de {0,1}"
+assert df_daily['Dias_para_Navidad'].between(0, NAV_VENTANA).all(), \
+    f"ERROR: Dias_para_Navidad fuera del rango [0, {NAV_VENTANA}]"
+print(f"\n  Verificación de rangos:")
+print(f"  Es_Navidad         : valores únicos → {sorted(df_daily['Es_Navidad'].unique())}  ✓")
+print(f"  Dias_para_Navidad  : rango [{df_daily['Dias_para_Navidad'].min()}, "
+      f"{df_daily['Dias_para_Navidad'].max()}]  (esperado [0, {NAV_VENTANA}])  ✓")
+
+# ── 4.9.4  Resumen final de df_daily ──────────────────────────────────────────
+print(f"\n  Columnas en df_daily ({len(df_daily.columns)} total):")
+print(f"  {list(df_daily.columns)}")
+print(f"  Filas: {len(df_daily)}")
+
+# ── 4.9.5  Guardar df_daily a CSV ─────────────────────────────────────────────
+RUTA_DAILY_CSV = 'contenidoCSV/data_daily.csv'
+df_daily.to_csv(RUTA_DAILY_CSV, index=False)
+print(f"\n  ✓ df_daily guardado en: {RUTA_DAILY_CSV}")
+print(f"    Filas:    {len(df_daily)}")
+print(f"    Columnas: {len(df_daily.columns)}")
+print(f"    Columnas: {list(df_daily.columns)}")
+
+print("\n  ✓ Sección 4 (Transformación) completada.")
