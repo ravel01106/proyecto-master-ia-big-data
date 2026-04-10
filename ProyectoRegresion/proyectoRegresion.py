@@ -1836,12 +1836,14 @@ print(f"\n  df_daily: {len(df_daily)} filas, {len(df_daily.columns)} columnas")
 print(f"  Columnas totales: {list(df_daily.columns)}")
 print(f"\n  ✓ OHE completado. ProductoTopDia reemplazado por {len(ohe_prod_cols)} columnas dummy.")
 
-#  5.6  RESUMEN FINAL Y GUARDADO DE df_encoded
-
+# ╔══════════════════════════════════════════════════════════════════════════════╗
+# ║  5.6  RESUMEN FINAL Y GUARDADO DE df_encoded                              ║
+# ╚══════════════════════════════════════════════════════════════════════════════╝
 print("\n--- 5.6 Resumen final y guardado de df_encoded ---\n")
 
 df_encoded = df_daily.copy()
 
+# ── 5.6.1  Shape y tipos ──────────────────────────────────────────────────────
 print(f"  Shape: {df_encoded.shape}  ({df_encoded.shape[0]} filas × {df_encoded.shape[1]} columnas)")
 
 cols_float  = [c for c in df_encoded.columns if df_encoded[c].dtype == 'float64']
@@ -1898,3 +1900,101 @@ print(f"\n  ✓ df_encoded guardado en: {RUTA_ENCODED_CSV}")
 print(f"    Filas   : {df_encoded.shape[0]}")
 print(f"    Columnas: {df_encoded.shape[1]}")
 print(f"\n  ✓ Sección 5 (Encoding) completada.")
+
+
+#  6.  NORMALIZACIÓN DE VARIABLES NUMÉRICAS                                  
+
+print("\n\n=== 6. NORMALIZACIÓN DE VARIABLES NUMÉRICAS ===")
+
+from sklearn.preprocessing import StandardScaler, MinMaxScaler, RobustScaler
+
+# ── 6.1  Clasificación: qué escalar y qué no ─────────────────────────────────
+print("\n--- 6.1 Columnas a escalar vs. columnas que ya están normalizadas ---\n")
+
+# Ya normalizadas — no tocar
+cols_ya_norm = (
+    [c for c in df_encoded.columns if c.startswith('Prod_')]   # dummies [0,1]
+    + ['EsFinDeSemana', 'Es_Navidad']                           # binarias [0,1]
+    + ['DiaSemana_sin', 'DiaSemana_cos', 'Mes_sin', 'Mes_cos'] # cíclicas [-1,1]
+    + ['Fecha']                                                  # índice temporal
+)
+
+cols_escalar = [c for c in df_encoded.columns
+                if c not in cols_ya_norm and c != 'Ventas']
+col_objetivo = 'Ventas'   # se escala por separado (necesitamos invertir después)
+
+print(f"  Columnas YA normalizadas (no tocar): {len(cols_ya_norm)-1}")  # -1 por Fecha
+print(f"    Dummies Prod_*  : 21")
+print(f"    Binarias        : EsFinDeSemana, Es_Navidad")
+print(f"    Cíclicas        : DiaSemana_sin/cos, Mes_sin/cos")
+print(f"\n  Columnas A ESCALAR ({len(cols_escalar)} features + 1 objetivo):")
+for c in cols_escalar:
+    print(f"    · {c:<22} rango=[{df_encoded[c].min():>10,.2f}, "
+          f"{df_encoded[c].max():>10,.2f}]")
+print(f"    · {'Ventas (objetivo)':<22} rango=[{df_encoded[col_objetivo].min():>10,.2f}, "
+      f"{df_encoded[col_objetivo].max():>10,.2f}]")
+
+# ── 6.2  Prueba de los 3 scalers ──────────────────────────────────────────────
+print("\n--- 6.2 Prueba sklearn: StandardScaler vs MinMaxScaler vs RobustScaler ---\n")
+
+# Usamos 'Ventas' como columna de demostración
+col_demo = 'Ventas'
+X_demo   = df_encoded[[col_demo]].values
+
+scalers = {
+    'StandardScaler\n(media=0, std=1)':    StandardScaler(),
+    'MinMaxScaler\n(rango [0,1])':          MinMaxScaler(),
+    'RobustScaler\n(mediana+IQR)':          RobustScaler(),
+}
+
+print(f"  Columna de demostración: '{col_demo}'")
+print(f"  {'Scaler':<28} {'min':>8} {'max':>8} {'media':>8} {'std':>8}")
+print(f"  {'-'*56}")
+resultados_demo = {}
+for nombre, scaler in scalers.items():
+    X_sc = scaler.fit_transform(X_demo).flatten()
+    resultados_demo[nombre] = X_sc
+    print(f"  {nombre.replace(chr(10),' '):<28} "
+          f"{X_sc.min():>8.4f} {X_sc.max():>8.4f} "
+          f"{X_sc.mean():>8.4f} {X_sc.std():>8.4f}")
+
+# ── 6.3  Gráfica comparativa ──────────────────────────────────────────────────
+fig, axes = plt.subplots(1, 4, figsize=(16, 4))
+fig.suptitle('6.2 — Comparativa de scalers sobre Ventas', fontsize=13)
+
+axes[0].hist(df_encoded[col_demo], bins=30, color='steelblue', edgecolor='white')
+axes[0].set_title('Original')
+axes[0].set_xlabel('£')
+
+colores = ['#ff7f0e', '#2ca02c', '#d62728']
+for ax, (nombre, vals), color in zip(axes[1:], resultados_demo.items(), colores):
+    ax.hist(vals, bins=30, color=color, edgecolor='white')
+    ax.set_title(nombre.replace('\n', ' '), fontsize=9)
+    ax.set_xlabel('Valor escalado')
+
+plt.tight_layout()
+plt.savefig(f'{RUTA_GRAFICOS}6.2_comparativa_scalers.png', dpi=150)
+plt.show()
+
+# ── 6.4  Decisión ─────────────────────────────────────────────────────────────
+print("\n--- 6.3 Decisión ---\n")
+print("  StandardScaler  → media=0, std=1. Asume distribución ≈ normal.")
+print("                    Adecuado para Ridge y Lasso (penalización simétrica).")
+print("  MinMaxScaler    → rango [0,1]. Sensible a outliers extremos.")
+print("                    Menos adecuado: aunque hicimos capping, los picos")
+print("                    de Q4 desplazan la distribución hacia la izquierda.")
+print("  RobustScaler    → usa mediana e IQR → robusto ante outliers residuales.")
+print("                    Buena opción pero produce rangos asimétricos.")
+print()
+print("  DECISIÓN: StandardScaler")
+print("    · Distribución de Ventas es aproximadamente normal (validado en 2.7)")
+print("    · Ridge/Lasso/RandomForest/XGBoost se benefician de media=0, std=1")
+print("    · Para LSTM también es la práctica habitual")
+print("    · IMPORTANTE: el scaler se ajustará (fit) SOLO sobre el conjunto")
+print("      de entrenamiento en la sección 8, para evitar data leakage.")
+print()
+print("  Columnas que NO se escalan:")
+print("    · Dummies Prod_* y binarias → ya en [0,1]")
+print("    · Cíclicas sin/cos          → ya en [-1,1]")
+print(f"\n  ✓ Sección 6 (Normalización) completada. Scaler elegido: StandardScaler."
+      f"\n    Aplicación real en sección 8 tras el split train/val/test.")
