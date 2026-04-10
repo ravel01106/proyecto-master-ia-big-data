@@ -1078,3 +1078,43 @@ print(df_daily['PaisTopDia'].value_counts().head(10).to_string())
 print(f"\n  Primeras filas con nuevas columnas:")
 print(df_daily[['Fecha', 'Ventas', 'ProductoTopDia', 'PaisTopDia']].head(10).to_string(index=False))
 print(f"\n  ✓ Variables categóricas añadidas a df_daily.")
+
+# 4.3 EXTRACCIÓN DE VARIABLES TEMPORALES DESDE LA FECHA
+
+print("\n--- 4.3 Extracción de variables temporales desde la fecha ---")
+
+df_daily['DiaSemana']    = df_daily['Fecha'].dt.dayofweek          # 0=Lun, 6=Dom
+df_daily['EsFinDeSemana']= df_daily['Fecha'].dt.dayofweek.isin([5, 6]).astype(int)
+df_daily['Mes']          = df_daily['Fecha'].dt.month              # 1–12
+df_daily['Trimestre']    = df_daily['Fecha'].dt.quarter            # 1–4
+df_daily['SemanaMes']    = df_daily['Fecha'].dt.day.apply(
+                               lambda d: min((d - 1) // 7 + 1, 5) # 1–5
+                           )
+df_daily['DiaAnio']      = df_daily['Fecha'].dt.dayofyear          # 1–365
+df_daily['SemanaAnio']   = df_daily['Fecha'].dt.isocalendar().week.astype(int)  # 1–53
+
+# ── 4.3.2  Resultado ─────────────────────────────────────────────────────────
+
+nuevas_cols = ['DiaSemana', 'EsFinDeSemana', 'Mes', 'Trimestre',
+               'SemanaMes', 'DiaAnio', 'SemanaAnio']
+
+print(f"\n  Columnas temporales añadidas: {nuevas_cols}")
+print(f"\n  Columnas totales en df_daily: {list(df_daily.columns)}")
+
+print(f"\n  Distribución de días por DiaSemana (0=Lun … 6=Dom):")
+print(df_daily['DiaSemana'].value_counts().sort_index().to_string())
+
+print(f"\n  Días marcados como fin de semana (EsFinDeSemana=1): "
+      f"{df_daily['EsFinDeSemana'].sum()}")
+
+print(f"\n  Distribución de días por Mes:")
+print(df_daily['Mes'].value_counts().sort_index().to_string())
+
+print(f"\n  Distribución de días por Trimestre:")
+print(df_daily['Trimestre'].value_counts().sort_index().to_string())
+
+print(f"\n  Primeras filas con variables temporales:")
+cols_muestra = ['Fecha', 'Ventas', 'DiaSemana', 'EsFinDeSemana',
+                'Mes', 'Trimestre', 'SemanaMes', 'SemanaAnio']
+print(df_daily[cols_muestra].head(10).to_string(index=False))
+print(f"\n  ✓ Variables temporales extraídas y añadidas a df_daily.")
