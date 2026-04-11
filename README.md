@@ -10,9 +10,17 @@ Se utiliza el dataset público "E-Commerce Data" de Kaggle el cual tiene las sig
 
 ## Modelo de regresión
 El reto específico de este módulo es predecir los beneficios diarios (valor total de ventas) para el periodo comprendido entre el 9 de noviembre de 2011 y el 9 de diciembre de 2011.
-Para ello, se utiliza:
-* Entrenamiento/Validación: Datos del 1 de diciembre de 2010 al 8 de noviembre de 2011.
-* Métrica de Evaluación: RMSE (Root Mean Squared Error).
+### Flujo de Trabajo
+* **Limpieza Temporal:** Gestión de registros negativos (devoluciones) y depuración de precios unitarios anómalos.
+* **Feature Engineering:** Creación de variables de retardo (*Lags*), medias móviles de 7 días y codificación de estacionalidad (fines de semana, días de la semana).
+* **Modelado Comparativo:**
+   - **Baseline:** ARIMA (Estadística clásica de series temporales).
+   - **Avanzado:** Random Forest Regressor (Ensamble de aprendizaje supervisado).
+
+### Métricas de Evaluación
+* **RMSE** (Root Mean Squared Error): Para penalizar desviaciones grandes.
+* **MAE** (Mean Absolute Error): Error medio en términos monetarios.
+* **MAPE** (Mean Absolute Percentage Error): *Métrica clave, reducida del 30.15% (ARIMA) al 15.36% (Random Forest).*
 
 
 ## Configuración técnica
