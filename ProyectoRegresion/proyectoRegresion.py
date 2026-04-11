@@ -2053,3 +2053,220 @@ print(f"    Columnas: {df_normalized.shape[1]}")
 print(f"\n  ✓ Sección 6 (Normalización) completada.")
 print(f"    StandardScaler aplicado a {len(cols_a_escalar)} columnas numéricas.")
 print(f"    Columnas no escaladas (ya normalizadas): dummies, binarias, cíclicas.")
+
+
+# 7.  REDUCCIÓN DE DIMENSIONALIDAD
+
+# El enunciado indica que con ~42 columnas no es obligatorio reducir
+# dimensionalidad. Se realizan experimentos con PCA y con análisis de
+# varianza para evaluar si aporta insights relevantes antes de decidir.
+
+# Estrategia:
+#   7.1  Preparar la matriz de features (excluir Fecha y Ventas)
+#   7.2  PCA exploratorio — varianza explicada acumulada
+#   7.3  Biplot — qué variables dominan cada componente
+#   7.4  Análisis de varianza por feature (ranking de importancia)
+#   7.5  Decisión razonada
+
+print("\n\n=== 7. REDUCCIÓN DE DIMENSIONALIDAD ===")
+
+from sklearn.decomposition import PCA
+
+# ── 7.1  Preparar matriz de features ─────────────────────────────────────────
+print("\n--- 7.1 Preparación de la matriz de features ---\n")
+
+# Usamos df_normalized (ya escalado) — excluimos Fecha (no feature) y
+# Ventas (variable objetivo, no entra en PCA)
+X_pca = df_normalized.drop(columns=['Fecha', 'Ventas']).values
+feature_names = df_normalized.drop(columns=['Fecha', 'Ventas']).columns.tolist()
+
+print(f"  Filas (muestras) : {X_pca.shape[0]}")
+print(f"  Columnas (features): {X_pca.shape[1]}")
+print(f"  Features: {feature_names}")
+
+# ── 7.2  PCA exploratorio — varianza explicada ────────────────────────────────
+print("\n--- 7.2 PCA exploratorio — varianza explicada acumulada ---\n")
+
+pca_full = PCA(n_components=X_pca.shape[1], random_state=42)
+pca_full.fit(X_pca)
+
+varianza_exp      = pca_full.explained_variance_ratio_
+varianza_acum     = varianza_exp.cumsum()
+
+# Número de componentes para alcanzar distintos umbrales de varianza
+for umbral in [0.80, 0.90, 0.95, 0.99]:
+    n_comp = int((varianza_acum >= umbral).argmax() + 1)
+    print(f"  Varianza explicada ≥ {umbral*100:.0f}%  →  {n_comp} componentes")
+
+print(f"\n  Varianza explicada por los primeros 10 componentes:")
+print(f"  {'PC':<5} {'Var. individual':>17} {'Var. acumulada':>16}")
+print(f"  {'-'*40}")
+for i in range(min(10, len(varianza_exp))):
+    print(f"  PC{i+1:<3} {varianza_exp[i]*100:>16.2f}%  {varianza_acum[i]*100:>15.2f}%")
+
+# ── 7.2.1  Gráfica de varianza acumulada ─────────────────────────────────────
+fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+fig.suptitle('7.2 — PCA: varianza explicada', fontsize=13)
+
+# Panel izquierdo: varianza individual (scree plot)
+axes[0].bar(range(1, len(varianza_exp) + 1), varianza_exp * 100,
+            color='steelblue', edgecolor='white')
+axes[0].set_title('Scree plot — varianza individual por PC')
+axes[0].set_xlabel('Componente principal')
+axes[0].set_ylabel('Varianza explicada (%)')
+axes[0].set_xlim(0.5, min(20, len(varianza_exp)) + 0.5)
+
+# Panel derecho: varianza acumulada
+axes[1].plot(range(1, len(varianza_acum) + 1), varianza_acum * 100,
+             marker='o', markersize=4, color='steelblue', linewidth=1.5)
+for umbral, color, label in [(0.80,'green','80%'), (0.90,'orange','90%'), (0.95,'red','95%')]:
+    n_comp = int((varianza_acum >= umbral).argmax() + 1)
+    axes[1].axhline(umbral * 100, color=color, linestyle='--', linewidth=1, label=f'{label} ({n_comp} PCs)')
+    axes[1].axvline(n_comp, color=color, linestyle=':', linewidth=1)
+axes[1].set_title('Varianza acumulada')
+axes[1].set_xlabel('Número de componentes')
+axes[1].set_ylabel('Varianza acumulada (%)')
+axes[1].legend(fontsize=9)
+axes[1].set_xlim(0.5, len(varianza_acum) + 0.5)
+
+plt.tight_layout()
+plt.savefig(f'{RUTA_GRAFICOS}7.2_pca_varianza.png', dpi=150)
+plt.show()
+plt.close()
+print(f"\n  Guardado: 7.2_pca_varianza.png")
+
+# ── 7.3  Análisis de loadings — qué variables dominan cada PC ────────────────
+print("\n--- 7.3 Loadings de PC1 y PC2 (contribución de cada feature) ---\n")
+
+pca_2 = PCA(n_components=2, random_state=42)
+pca_2.fit(X_pca)
+X_2d = pca_2.transform(X_pca)
+
+loadings = pd.DataFrame(
+    pca_2.components_.T,
+    index=feature_names,
+    columns=['PC1', 'PC2']
+)
+
+# Top 10 features por valor absoluto en PC1 y PC2
+print(f"  Top 10 features con mayor peso en PC1:")
+top_pc1 = loadings['PC1'].abs().sort_values(ascending=False).head(10)
+for feat in top_pc1.index:
+    print(f"    {feat:<22}  loading={loadings.loc[feat,'PC1']:>8.4f}")
+
+print(f"\n  Top 10 features con mayor peso en PC2:")
+top_pc2 = loadings['PC2'].abs().sort_values(ascending=False).head(10)
+for feat in top_pc2.index:
+    print(f"    {feat:<22}  loading={loadings.loc[feat,'PC2']:>8.4f}")
+
+# ── 7.3.1  Scatter plot PC1 vs PC2 coloreado por Ventas ──────────────────────
+ventas_norm = df_normalized['Ventas'].values
+
+fig, axes = plt.subplots(1, 2, figsize=(15, 6))
+fig.suptitle('7.3 — PCA 2D: scatter y loadings', fontsize=13)
+
+# Scatter PC1 vs PC2
+sc = axes[0].scatter(X_2d[:, 0], X_2d[:, 1],
+                     c=ventas_norm, cmap='coolwarm', alpha=0.7, s=30)
+plt.colorbar(sc, ax=axes[0], label='Ventas (escalada)')
+axes[0].set_title(f'Proyección PC1 vs PC2\n'
+                  f'(PC1={varianza_exp[0]*100:.1f}% | PC2={pca_2.explained_variance_ratio_[1]*100:.1f}%)')
+axes[0].set_xlabel('PC1')
+axes[0].set_ylabel('PC2')
+
+# Biplot — flechas de loadings (top 8 por magnitud total)
+loadings['magnitud'] = np.sqrt(loadings['PC1']**2 + loadings['PC2']**2)
+top_features = loadings.nlargest(8, 'magnitud').index
+escala = 3.0
+for feat in top_features:
+    axes[1].arrow(0, 0,
+                  loadings.loc[feat, 'PC1'] * escala,
+                  loadings.loc[feat, 'PC2'] * escala,
+                  head_width=0.05, head_length=0.05,
+                  fc='steelblue', ec='steelblue', alpha=0.8)
+    axes[1].text(loadings.loc[feat, 'PC1'] * escala * 1.1,
+                 loadings.loc[feat, 'PC2'] * escala * 1.1,
+                 feat, fontsize=7, ha='center')
+theta = np.linspace(0, 2 * np.pi, 200)
+axes[1].plot(np.cos(theta) * escala, np.sin(theta) * escala,
+             'lightgray', linewidth=0.8)
+axes[1].axhline(0, color='gray', linewidth=0.5)
+axes[1].axvline(0, color='gray', linewidth=0.5)
+axes[1].set_title('Biplot — loadings de las 8 features principales')
+axes[1].set_xlabel('PC1')
+axes[1].set_ylabel('PC2')
+axes[1].set_aspect('equal')
+
+plt.tight_layout()
+plt.savefig(f'{RUTA_GRAFICOS}7.3_pca_biplot.png', dpi=150)
+plt.show()
+plt.close()
+print(f"  Guardado: 7.3_pca_biplot.png")
+
+# ── 7.4  Varianza por feature (ranking de importancia sin PCA) ───────────────
+print("\n--- 7.4 Ranking de varianza por feature (≈ importancia informacional) ---\n")
+
+varianza_features = pd.Series(
+    df_normalized[feature_names].var().values,
+    index=feature_names
+).sort_values(ascending=False)
+
+print(f"  {'Feature':<22} {'Varianza':>10}  Interpretación")
+print(f"  {'-'*60}")
+for feat, var in varianza_features.items():
+    if var < 0.05:
+        nivel = '← baja varianza (poco informativa)'
+    elif var < 0.5:
+        nivel = '← varianza moderada'
+    else:
+        nivel = ''
+    print(f"  {feat:<22} {var:>10.4f}  {nivel}")
+
+# Features con varianza muy baja (cercana a 0) — candidatas a eliminar
+umbral_var = 0.05
+cols_baja_var = varianza_features[varianza_features < umbral_var].index.tolist()
+print(f"\n  Features con varianza < {umbral_var}: {len(cols_baja_var)}")
+if cols_baja_var:
+    print(f"  {cols_baja_var}")
+
+# ── 7.5  DECISIÓN ─────────────────────────────────────────────────────────────
+print("\n--- 7.5 Decisión sobre reducción de dimensionalidad ---\n")
+
+n_90 = int((varianza_acum >= 0.90).argmax() + 1)
+n_95 = int((varianza_acum >= 0.95).argmax() + 1)
+n_total = X_pca.shape[1]
+
+print(f"""  Análisis realizado:
+    · El dataset tiene {n_total} features tras el encoding.
+    · PCA necesita {n_90} componentes para explicar el 90% de la varianza
+      y {n_95} para el 95% — una reducción moderada sobre {n_total} features.
+    · PC1 está dominada por las variables de volumen (NumTransacc, NumPedidos,
+      NumClientes, UnidadesVendidas) y los lags/rolling de Ventas — todas
+      altamente correlacionadas entre sí (confirmado en 4.6).
+    · PC2 captura principalmente la variabilidad temporal (DiaAnio, SemanaAnio,
+      Trimestre) — el patrón estacional del negocio.
+    · Las columnas dummy de ProductoTopDia tienen varianza muy baja
+      individualmente (cada producto es top solo unos pocos días),
+      pero en conjunto representan información categórica relevante.
+
+  DECISIÓN: NO se aplica reducción de dimensionalidad al dataset final.
+    Motivo 1 → {n_total} features es un número manejable para todos los
+               modelos previstos (Ridge, Lasso, Random Forest, XGBoost).
+    Motivo 2 → PCA destruye la interpretabilidad de los coeficientes
+               (Ridge/Lasso sobre PCs no permite saber qué feature importa).
+    Motivo 3 → Los modelos con regularización (Ridge, Lasso) gestionan
+               la multicolinealidad sin necesidad de reducir dimensiones.
+    Motivo 4 → Con n=367 filas y {n_total} features, no hay riesgo de
+               maldición dimensional (ratio filas/features = {367/n_total:.1f}).
+
+  INSIGHT obtenido:
+    · La alta correlación entre NumTransacc, NumPedidos, NumClientes y
+      los lags/rolling (todos en PC1) confirma que son proxies de la
+      misma señal. Lasso probablemente seleccionará solo 1-2 de ellas.
+    · La separación PC1 (volumen) vs PC2 (temporalidad) sugiere que el
+      modelo necesita capturar ambas dimensiones para predecir correctamente.
+""")
+
+print(f"  ✓ Sección 7 (Reducción de dimensionalidad) completada.")
+print(f"    Dataset final para modelado: df_normalized  "
+      f"({df_normalized.shape[0]} filas × {df_normalized.shape[1]} columnas)")
