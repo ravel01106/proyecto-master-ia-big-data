@@ -1908,7 +1908,7 @@ print("\n\n=== 6. NORMALIZACIÓN DE VARIABLES NUMÉRICAS ===")
 
 from sklearn.preprocessing import StandardScaler, MinMaxScaler, RobustScaler
 
-# ── 6.1  Clasificación: qué escalar y qué no ─────────────────────────────────
+# ── 6.1  Clasificación: qué escalar y qué no 
 print("\n--- 6.1 Columnas a escalar vs. columnas que ya están normalizadas ---\n")
 
 # Ya normalizadas — no tocar
@@ -1996,5 +1996,60 @@ print()
 print("  Columnas que NO se escalan:")
 print("    · Dummies Prod_* y binarias → ya en [0,1]")
 print("    · Cíclicas sin/cos          → ya en [-1,1]")
-print(f"\n  ✓ Sección 6 (Normalización) completada. Scaler elegido: StandardScaler."
-      f"\n    Aplicación real en sección 8 tras el split train/val/test.")
+print(f"\n  ✓ Decisión tomada. Aplicando StandardScaler a continuación.")
+
+# ── 6.4  APLICACIÓN DEL StandardScaler ───────────────────────────────────────
+print("\n--- 6.4 Aplicación del StandardScaler ---\n")
+
+# Columnas a escalar: las definidas en 6.1 + la variable objetivo 'Ventas'
+cols_a_escalar = cols_escalar + [col_objetivo]
+
+# Crear copia del dataset encoded para no modificar df_encoded
+df_normalized = df_encoded.copy()
+
+# Ajustar y transformar — se usa TODO df_encoded aquí (paso de normalización)
+# NOTA: en la sección 8 (modelado), el scaler se re-ajustará solo sobre
+# el conjunto de entrenamiento para evitar data leakage en la predicción final.
+scaler_final = StandardScaler()
+df_normalized[cols_a_escalar] = scaler_final.fit_transform(df_encoded[cols_a_escalar])
+
+# ── 6.4.1  Verificación: media ≈ 0, std ≈ 1 tras el escalado ─────────────────
+print(f"  {'Columna':<22} {'media_orig':>12} {'std_orig':>10}  {'media_sc':>10} {'std_sc':>8}")
+print(f"  {'-'*68}")
+for i, col in enumerate(cols_a_escalar):
+    media_orig = df_encoded[col].mean()
+    std_orig   = df_encoded[col].std()
+    media_sc   = df_normalized[col].mean()
+    std_sc     = df_normalized[col].std()
+    ok = '✓' if abs(media_sc) < 0.01 and abs(std_sc - 1.0) < 0.01 else '⚠'
+    print(f"  {col:<22} {media_orig:>12,.2f} {std_orig:>10,.2f}  "
+          f"{media_sc:>10.4f} {std_sc:>8.4f}  {ok}")
+
+# ── 6.4.2  Verificar que las columnas no escaladas no cambiaron ───────────────
+cols_dummy  = [c for c in df_normalized.columns if c.startswith('Prod_')]
+cols_binar  = ['EsFinDeSemana', 'Es_Navidad']
+cols_ciclic = ['DiaSemana_sin', 'DiaSemana_cos', 'Mes_sin', 'Mes_cos']
+
+sin_cambios = True
+for col in cols_dummy + cols_binar + cols_ciclic:
+    if not df_normalized[col].equals(df_encoded[col]):
+        print(f"  ⚠ Columna modificada por error: {col}")
+        sin_cambios = False
+if sin_cambios:
+    print(f"\n  Columnas no escaladas (dummies, binarias, cíclicas): sin cambios ✓")
+
+# ── 6.4.3  Primeras filas del dataset normalizado ────────────────────────────
+print(f"\n  Primeras 5 filas — columnas escaladas:")
+cols_show = ['Fecha', 'Ventas', 'NumTransacc', 'NumPedidos', 'Ventas_Lag1', 'Ventas_Media_7d']
+print(df_normalized[cols_show].head(5).to_string(index=False, float_format=lambda x: f'{x:>9.4f}'))
+
+# ── 6.4.4  Guardar dataset normalizado ───────────────────────────────────────
+RUTA_NORMALIZED_CSV = 'contenidoCSV/data_normalized.csv'
+df_normalized.to_csv(RUTA_NORMALIZED_CSV, index=False)
+
+print(f"\n  ✓ Dataset normalizado guardado en: {RUTA_NORMALIZED_CSV}")
+print(f"    Filas   : {df_normalized.shape[0]}")
+print(f"    Columnas: {df_normalized.shape[1]}")
+print(f"\n  ✓ Sección 6 (Normalización) completada.")
+print(f"    StandardScaler aplicado a {len(cols_a_escalar)} columnas numéricas.")
+print(f"    Columnas no escaladas (ya normalizadas): dummies, binarias, cíclicas.")
