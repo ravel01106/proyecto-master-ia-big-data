@@ -2270,3 +2270,172 @@ print(f"""  Análisis realizado:
 print(f"  ✓ Sección 7 (Reducción de dimensionalidad) completada.")
 print(f"    Dataset final para modelado: df_normalized  "
       f"({df_normalized.shape[0]} filas × {df_normalized.shape[1]} columnas)")
+
+# 8.  DIVISIÓN EN CONJUNTOS DE ENTRENAMIENTO, VALIDACIÓN Y TEST
+#
+# Estrategia temporal (NO aleatoria):
+#   En series temporales el split NUNCA es aleatorio.
+#   Un split aleatorio filtraría fechas futuras al entrenamiento
+#   (data leakage) y el modelo aprendería a "ver el futuro".
+#   La única división válida es cronológica.
+#
+#   TEST  (fijo por enunciado) : 09-nov-2011 → 09-dic-2011
+#   TRAIN (≈80-95% de no-test) : 01-dic-2010 → 08-oct-2011
+#   VAL   (resto de no-test)   : 09-oct-2011 → 08-nov-2011
+#
+#   Esto da ~1 mes de validación (misma duración que el test set)
+#   tal como sugiere el enunciado como primera aproximación.
+
+print("\n\n=== 8. DIVISIÓN EN CONJUNTOS DE ENTRENAMIENTO, VALIDACIÓN Y TEST ===")
+
+print("\n--- 8.1 Definición de fechas de corte ---\n")
+
+FECHA_FIN_TRAIN = pd.Timestamp('2011-10-08')   # último día de train (inclusive)
+FECHA_INI_VAL   = pd.Timestamp('2011-10-09')   # primer día de validación
+FECHA_FIN_VAL   = pd.Timestamp('2011-11-08')   # último día de validación (inclusive)
+FECHA_INI_TEST  = pd.Timestamp('2011-11-09')   # primer día de test
+FECHA_FIN_TEST  = pd.Timestamp('2011-12-09')   # último día de test (inclusive)
+
+print(f"  TRAIN : {df_normalized['Fecha'].min().date()}  →  {FECHA_FIN_TRAIN.date()}")
+print(f"  VAL   : {FECHA_INI_VAL.date()}                →  {FECHA_FIN_VAL.date()}")
+print(f"  TEST  : {FECHA_INI_TEST.date()}               →  {FECHA_FIN_TEST.date()}")
+
+print("\n--- 8.2 Creación de los splits ---\n")
+
+df_train = df_normalized[df_normalized['Fecha'] <= FECHA_FIN_TRAIN].copy()
+df_val   = df_normalized[(df_normalized['Fecha'] >= FECHA_INI_VAL) &
+                          (df_normalized['Fecha'] <= FECHA_FIN_VAL)].copy()
+df_test  = df_normalized[(df_normalized['Fecha'] >= FECHA_INI_TEST) &
+                          (df_normalized['Fecha'] <= FECHA_FIN_TEST)].copy()
+
+n_total = len(df_normalized)
+n_train = len(df_train)
+n_val   = len(df_val)
+n_test  = len(df_test)
+
+print(f"  {'Conjunto':<8} {'Filas':>6}  {'% total':>8}  {'Inicio':>12}  {'Fin':>12}")
+print(f"  {'-'*56}")
+print(f"  {'TRAIN':<8} {n_train:>6}  {n_train/n_total*100:>7.1f}%  "
+      f"{df_train['Fecha'].min().date()!s:>12}  {df_train['Fecha'].max().date()!s:>12}")
+print(f"  {'VAL':<8} {n_val:>6}  {n_val/n_total*100:>7.1f}%  "
+      f"{df_val['Fecha'].min().date()!s:>12}  {df_val['Fecha'].max().date()!s:>12}")
+print(f"  {'TEST':<8} {n_test:>6}  {n_test/n_total*100:>7.1f}%  "
+      f"{df_test['Fecha'].min().date()!s:>12}  {df_test['Fecha'].max().date()!s:>12}")
+print(f"  {'-'*56}")
+print(f"  {'TOTAL':<8} {n_train+n_val+n_test:>6}  (verificación: {n_train+n_val+n_test} == {n_total} "
+      f"{'✓' if n_train+n_val+n_test == n_total else '⚠'})")
+
+# ── 8.3  Separar features y objetivo ─────────────────────────────────────────
+print("\n--- 8.3 Separación de features (X) y objetivo (y) ---\n")
+
+COLS_FEATURES = [c for c in df_normalized.columns if c not in ['Fecha', 'Ventas']]
+COL_OBJETIVO  = 'Ventas'
+
+X_train = df_train[COLS_FEATURES].values
+y_train = df_train[COL_OBJETIVO].values
+
+X_val   = df_val[COLS_FEATURES].values
+y_val   = df_val[COL_OBJETIVO].values
+
+X_test  = df_test[COLS_FEATURES].values
+y_test  = df_test[COL_OBJETIVO].values
+
+print(f"  Features utilizadas: {len(COLS_FEATURES)}")
+print(f"  {COLS_FEATURES}\n")
+print(f"  X_train : {X_train.shape}   y_train : {y_train.shape}")
+print(f"  X_val   : {X_val.shape}     y_val   : {y_val.shape}")
+print(f"  X_test  : {X_test.shape}    y_test  : {y_test.shape}")
+
+# ── 8.4  Re-escalar con scaler ajustado SOLO sobre train ──────────────────────
+#
+# IMPORTANTE — data leakage:
+#   En la sección 6 aplicamos el scaler sobre TODO el dataset para cumplir
+#   el requisito del punto 6. Aquí re-ajustamos el scaler solo sobre X_train
+#   y transformamos X_val y X_test con esos parámetros.
+#   Esto es lo técnicamente correcto para el modelado: los parámetros de
+#   escala (media, std) del test no deben influir en el entrenamiento.
+
+print("\n--- 8.4 Re-escalado correcto: fit sobre train, transform sobre val/test ---\n")
+
+idx_escalar = [COLS_FEATURES.index(c) for c in cols_escalar if c in COLS_FEATURES]
+
+scaler_train = StandardScaler()
+X_train[:, idx_escalar] = scaler_train.fit_transform(X_train[:, idx_escalar])
+X_val  [:, idx_escalar] = scaler_train.transform(X_val  [:, idx_escalar])
+X_test [:, idx_escalar] = scaler_train.transform(X_test [:, idx_escalar])
+
+scaler_y = StandardScaler()
+y_train_sc = scaler_y.fit_transform(y_train.reshape(-1, 1)).ravel()
+y_val_sc   = scaler_y.transform(y_val.reshape(-1, 1)).ravel()
+y_test_sc  = scaler_y.transform(y_test.reshape(-1, 1)).ravel()
+
+print(f"  scaler_train ajustado sobre {X_train.shape[0]} filas de train")
+print(f"  scaler_y     ajustado sobre {y_train.shape[0]} valores de Ventas (train)")
+print(f"\n  Verificación X_train (columnas numéricas):")
+print(f"    media ≈ {X_train[:, idx_escalar].mean(axis=0).mean():.4f}  (esperado ≈ 0)")
+print(f"    std   ≈ {X_train[:, idx_escalar].std(axis=0).mean():.4f}   (esperado ≈ 1)")
+print(f"\n  Verificación y_train escalado:")
+print(f"    media ≈ {y_train_sc.mean():.4f}  (esperado ≈ 0)")
+print(f"    std   ≈ {y_train_sc.std():.4f}   (esperado ≈ 1)")
+
+# ── 8.5  Gráfica del split temporal ──────────────────────────────────────────
+print("\n--- 8.5 Visualización del split temporal ---")
+
+fig, ax = plt.subplots(figsize=(14, 4))
+
+ventas_orig = df_normalized['Ventas'].values   # ya escaladas, solo para visualizar
+fechas_all  = df_normalized['Fecha'].values
+
+ax.plot(df_train['Fecha'], df_train['Ventas'], color='steelblue',
+        linewidth=1.2, label=f'Train ({n_train} días)')
+ax.plot(df_val['Fecha'],   df_val['Ventas'],   color='orange',
+        linewidth=1.2, label=f'Validación ({n_val} días)')
+ax.plot(df_test['Fecha'],  df_test['Ventas'],  color='red',
+        linewidth=1.2, label=f'Test ({n_test} días)')
+
+ax.axvline(FECHA_INI_VAL,  color='orange', linestyle='--', linewidth=1.0, alpha=0.8)
+ax.axvline(FECHA_INI_TEST, color='red',    linestyle='--', linewidth=1.0, alpha=0.8)
+
+ax.set_title('8.5 — Split temporal: Train / Validación / Test', fontsize=13)
+ax.set_xlabel('Fecha')
+ax.set_ylabel('Ventas (escaladas)')
+ax.legend()
+plt.tight_layout()
+plt.savefig(f'{RUTA_GRAFICOS}8.5_split_temporal.png', dpi=150)
+plt.show()
+plt.close()
+print(f"\n  Guardado: 8.5_split_temporal.png")
+
+# ── 8.6  Resumen final ────────────────────────────────────────────────────────
+print(f"\n--- 8.6 Resumen del split ---\n")
+print(f"  {'Conjunto':<10} {'Filas':>6}  {'% total':>8}  {'Inicio':>12}  {'Fin':>12}")
+print(f"  {'-'*56}")
+print(f"  {'TRAIN':<10} {n_train:>6}  {n_train/n_total*100:>7.1f}%  "
+      f"{df_train['Fecha'].min().date()!s:>12}  {df_train['Fecha'].max().date()!s:>12}")
+print(f"  {'VAL':<10} {n_val:>6}  {n_val/n_total*100:>7.1f}%  "
+      f"{df_val['Fecha'].min().date()!s:>12}  {df_val['Fecha'].max().date()!s:>12}")
+print(f"  {'TEST':<10} {n_test:>6}  {n_test/n_total*100:>7.1f}%  "
+      f"{df_test['Fecha'].min().date()!s:>12}  {df_test['Fecha'].max().date()!s:>12}")
+print(f"\n  Scalers disponibles para el modelado:")
+print(f"    scaler_train → transforma X (features numéricas)")
+print(f"    scaler_y     → transforma y (Ventas) — necesario para invertir predicciones a £")
+print(f"\n  Arrays listos para el modelado:")
+print(f"    X_train {X_train.shape} | y_train {y_train.shape} | y_train_sc {y_train_sc.shape}")
+print(f"    X_val   {X_val.shape}   | y_val   {y_val.shape}   | y_val_sc   {y_val_sc.shape}")
+print(f"    X_test  {X_test.shape}  | y_test  {y_test.shape}  | y_test_sc  {y_test_sc.shape}")
+print(f"\n  ✓ Sección 8 (División train/val/test) completada.")
+
+# ── 8.7  Guardar los tres conjuntos como CSV ──────────────────────────────────
+print("\n--- 8.7 Guardado de los conjuntos como CSV ---\n")
+
+RUTA_TRAIN_CSV = 'contenidoCSV/data_train.csv'
+RUTA_VAL_CSV   = 'contenidoCSV/data_val.csv'
+RUTA_TEST_CSV  = 'contenidoCSV/data_test.csv'
+
+df_train.to_csv(RUTA_TRAIN_CSV, index=False)
+df_val.to_csv(RUTA_VAL_CSV,     index=False)
+df_test.to_csv(RUTA_TEST_CSV,   index=False)
+
+print(f"  ✓ Train guardado en : {RUTA_TRAIN_CSV}  ({n_train} filas × {df_train.shape[1]} columnas)")
+print(f"  ✓ Val   guardado en : {RUTA_VAL_CSV}    ({n_val} filas × {df_val.shape[1]} columnas)")
+print(f"  ✓ Test  guardado en : {RUTA_TEST_CSV}   ({n_test} filas × {df_test.shape[1]} columnas)")
