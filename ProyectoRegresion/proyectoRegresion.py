@@ -2439,3 +2439,472 @@ df_test.to_csv(RUTA_TEST_CSV,   index=False)
 print(f"  ✓ Train guardado en : {RUTA_TRAIN_CSV}  ({n_train} filas × {df_train.shape[1]} columnas)")
 print(f"  ✓ Val   guardado en : {RUTA_VAL_CSV}    ({n_val} filas × {df_val.shape[1]} columnas)")
 print(f"  ✓ Test  guardado en : {RUTA_TEST_CSV}   ({n_test} filas × {df_test.shape[1]} columnas)")
+
+
+# ============================================================
+# 9.  ENTRENAMIENTO DE MODELOS DE REGRESIÓN
+# ============================================================
+#
+# Se entrenan 3 modelos de distinta naturaleza:
+#   Modelo 1 — Regresión Polinómica (sklearn)
+#              Extiende la regresión lineal con términos de grado > 1.
+#              Función de pérdida: MSE (minimizado por OLS). Evaluado con RMSE.
+#   Modelo 2 — Random Forest Regressor (sklearn)
+#              Ensemble de árboles de decisión. Robusto ante no-linealidades
+#              y multicolinealidad. GridSearchCV sobre hiperparámetros clave.
+#   Modelo 3 — XGBoost Regressor (xgboost)
+#              Gradient boosting optimizado. Suele ser el mejor para
+#              series temporales tabulares. RandomizedSearchCV + early stopping.
+#
+# Métrica de evaluación: RMSE (Root Mean Squared Error) en escala £ original
+#   → se invierte la escala con scaler_y.inverse_transform() antes de calcular RMSE
+
+print("\n\n=== 9. ENTRENAMIENTO DE MODELOS DE REGRESIÓN ===")
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import matplotlib.ticker as mticker
+from sklearn.preprocessing import PolynomialFeatures, StandardScaler
+from sklearn.linear_model  import LinearRegression, Ridge
+from sklearn.pipeline      import Pipeline
+from sklearn.ensemble      import RandomForestRegressor
+from sklearn.metrics       import mean_squared_error
+import xgboost as xgb
+from itertools import product as iterproduct
+import random
+
+RUTA_GRAFICOS = 'graficos/'
+
+# ── Recargar los splits desde CSV (permite ejecutar esta sección de forma independiente)
+print("\n--- Cargando datos de train/val/test desde CSV ---")
+df_train_s9 = pd.read_csv('contenidoCSV/data_train.csv', parse_dates=['Fecha'])
+df_val_s9   = pd.read_csv('contenidoCSV/data_val.csv',   parse_dates=['Fecha'])
+df_test_s9  = pd.read_csv('contenidoCSV/data_test.csv',  parse_dates=['Fecha'])
+
+# Ventas en £ originales — desde data_encoded.csv (antes de la normalización)
+# Los CSV de train/val/test tienen Ventas ya normalizada (sección 6) → doble escala si usamos scaler_y sobre ellos
+df_encoded_s9 = pd.read_csv('contenidoCSV/data_encoded.csv', parse_dates=['Fecha'])
+
+FECHA_FIN_TRAIN = pd.Timestamp('2011-10-08')
+FECHA_INI_VAL   = pd.Timestamp('2011-10-09')
+FECHA_FIN_VAL   = pd.Timestamp('2011-11-08')
+FECHA_INI_TEST  = pd.Timestamp('2011-11-09')
+FECHA_FIN_TEST  = pd.Timestamp('2011-12-09')
+
+y_train_raw = df_encoded_s9[df_encoded_s9['Fecha'] <= FECHA_FIN_TRAIN]['Ventas'].values
+y_val_raw   = df_encoded_s9[(df_encoded_s9['Fecha'] >= FECHA_INI_VAL) & (df_encoded_s9['Fecha'] <= FECHA_FIN_VAL)]['Ventas'].values
+y_test_raw  = df_encoded_s9[(df_encoded_s9['Fecha'] >= FECHA_INI_TEST) & (df_encoded_s9['Fecha'] <= FECHA_FIN_TEST)]['Ventas'].values
+
+COLS_FEATURES = [c for c in df_train_s9.columns if c not in ['Fecha', 'Ventas']]
+COL_OBJETIVO  = 'Ventas'
+
+# Features desde los CSV normalizados (features X ya están bien escaladas)
+X_train_raw = df_train_s9[COLS_FEATURES].values
+X_val_raw   = df_val_s9[COLS_FEATURES].values
+X_test_raw  = df_test_s9[COLS_FEATURES].values
+
+# Columnas numéricas a re-escalar (mismas que sección 6 — todas menos dummies, binarias y cíclicas)
+cols_no_escalar = (
+    [c for c in COLS_FEATURES if c.startswith('Prod_')]
+    + ['EsFinDeSemana', 'Es_Navidad',
+       'DiaSemana_sin', 'DiaSemana_cos', 'Mes_sin', 'Mes_cos']
+)
+cols_escalar_s9 = [c for c in COLS_FEATURES if c not in cols_no_escalar]
+idx_escalar_s9  = [COLS_FEATURES.index(c) for c in cols_escalar_s9]
+
+# Re-escalar X: fit SOLO sobre train, transform sobre val y test
+X_train = X_train_raw.copy()
+X_val   = X_val_raw.copy()
+X_test  = X_test_raw.copy()
+
+scaler_train = StandardScaler()
+X_train[:, idx_escalar_s9] = scaler_train.fit_transform(X_train_raw[:, idx_escalar_s9])
+X_val  [:, idx_escalar_s9] = scaler_train.transform(X_val_raw  [:, idx_escalar_s9])
+X_test [:, idx_escalar_s9] = scaler_train.transform(X_test_raw [:, idx_escalar_s9])
+
+# Escalar y: fit SOLO sobre train (valores en £ originales)
+scaler_y = StandardScaler()
+y_train_sc = scaler_y.fit_transform(y_train_raw.reshape(-1,1)).ravel()
+y_val_sc   = scaler_y.transform(y_val_raw.reshape(-1,1)).ravel()
+y_test_sc  = scaler_y.transform(y_test_raw.reshape(-1,1)).ravel()
+
+print(f"  X_train: {X_train.shape} | X_val: {X_val.shape} | X_test: {X_test.shape}")
+print(f"  y_train — media: £{y_train_raw.mean():,.0f}  std: £{y_train_raw.std():,.0f}")
+print(f"  y_train_sc — media: {y_train_sc.mean():.4f}  std: {y_train_sc.std():.4f}  ✓")
+
+# ── Función auxiliar: RMSE en £ originales ────────────────────────────────────
+def rmse_original(y_true_sc, y_pred_sc, scaler):
+    """Invierte el escalado y calcula RMSE en libras."""
+    y_true = scaler.inverse_transform(y_true_sc.reshape(-1, 1)).ravel()
+    y_pred = scaler.inverse_transform(y_pred_sc.reshape(-1, 1)).ravel()
+    return np.sqrt(mean_squared_error(y_true, y_pred)), y_true, y_pred
+
+# ── Función auxiliar: resumen de resultados ──────────────────────────────────
+def print_resultados(nombre, rmse_val, rmse_test, y_test_orig, y_pred_orig):
+    print(f"\n  {'─'*55}")
+    print(f"  {nombre}")
+    print(f"  {'─'*55}")
+    print(f"    RMSE Validación : £{rmse_val:>10,.2f}")
+    print(f"    RMSE Test       : £{rmse_test:>10,.2f}")
+    print(f"    Ventas reales   (media £): {y_test_orig.mean():>10,.2f}")
+    print(f"    Predicciones    (media £): {y_pred_orig.mean():>10,.2f}")
+    print(f"    Error relativo  (RMSE/media): {rmse_test/y_test_orig.mean()*100:.1f}%")
+
+# Diccionario para guardar resultados de todos los modelos
+resultados_modelos = {}
+
+# ════════════════════════════════════════════════════════════
+# 9.1  MODELO 1 — REGRESIÓN POLINÓMICA
+# ════════════════════════════════════════════════════════════
+print("\n\n--- 9.1 Modelo 1: Regresión Polinómica ---")
+print("""
+  Descripción:
+    PolynomialFeatures expande las features originales añadiendo términos
+    de grado d (x1², x1·x2, x2², ...) y luego aplica Ridge (regresión
+    lineal con regularización L2) para evitar overfitting.
+    A mayor grado → más capacidad pero mayor riesgo de sobreajuste.
+
+  Hiperparámetros estudiados:
+    · degree (1–3): grado del polinomio
+    · alpha  (0.01–100): intensidad de la regularización Ridge
+""")
+
+# ── 9.1.1  Pipeline ──────────────────────────────────────────────────────────
+pipe_poly = Pipeline([
+    ('poly',  PolynomialFeatures(include_bias=False)),
+    ('ridge', Ridge())
+])
+
+# ── 9.1.2  GridSearchCV sobre validación (usando TimeSeriesSplit no aplica
+#           aquí porque ya tenemos el split manual; usamos val directamente) ──
+param_grid_poly = {
+    'poly__degree': [1, 2, 3],
+    'ridge__alpha': [0.01, 0.1, 1.0, 10.0, 100.0],
+}
+
+print("  GridSearchCV en curso (degree × alpha)...")
+best_rmse_poly = np.inf
+best_params_poly = {}
+resultados_grid_poly = []
+
+for degree in param_grid_poly['poly__degree']:
+    for alpha in param_grid_poly['ridge__alpha']:
+        pipe_poly.set_params(poly__degree=degree, ridge__alpha=alpha)
+        pipe_poly.fit(X_train, y_train_sc)
+        y_val_pred_sc = pipe_poly.predict(X_val)
+        rmse_v, _, _ = rmse_original(y_val_sc, y_val_pred_sc, scaler_y)
+        resultados_grid_poly.append((degree, alpha, rmse_v))
+        if rmse_v < best_rmse_poly:
+            best_rmse_poly = rmse_v
+            best_params_poly = {'degree': degree, 'alpha': alpha}
+
+print(f"\n  Resultados GridSearch (RMSE Val en £):")
+print(f"  {'degree':>8} {'alpha':>8} {'RMSE Val':>12}")
+print(f"  {'-'*30}")
+for d, a, r in sorted(resultados_grid_poly, key=lambda x: x[2]):
+    marca = ' ← mejor' if d == best_params_poly['degree'] and a == best_params_poly['alpha'] else ''
+    print(f"  {d:>8} {a:>8.2f} £{r:>10,.2f}{marca}")
+
+# ── 9.1.3  Reentrenar con mejores hiperparámetros ────────────────────────────
+pipe_poly.set_params(poly__degree=best_params_poly['degree'],
+                     ridge__alpha=best_params_poly['alpha'])
+pipe_poly.fit(X_train, y_train_sc)
+
+y_val_pred_sc_poly  = pipe_poly.predict(X_val)
+y_test_pred_sc_poly = pipe_poly.predict(X_test)
+
+rmse_val_poly,  _,              _              = rmse_original(y_val_sc,  y_val_pred_sc_poly,  scaler_y)
+rmse_test_poly, y_test_orig,    y_pred_poly    = rmse_original(y_test_sc, y_test_pred_sc_poly, scaler_y)
+
+print_resultados('Regresión Polinómica', rmse_val_poly, rmse_test_poly, y_test_orig, y_pred_poly)
+print(f"\n  Mejores hiperparámetros: degree={best_params_poly['degree']}, alpha={best_params_poly['alpha']}")
+
+resultados_modelos['Polinómica'] = {
+    'rmse_val': rmse_val_poly, 'rmse_test': rmse_test_poly,
+    'y_pred': y_pred_poly, 'params': best_params_poly
+}
+
+# ════════════════════════════════════════════════════════════
+# 9.2  MODELO 2 — RANDOM FOREST REGRESSOR
+# ════════════════════════════════════════════════════════════
+print("\n\n--- 9.2 Modelo 2: Random Forest Regressor ---")
+print("""
+  Descripción:
+    Ensemble de árboles de decisión entrenados en subconjuntos aleatorios
+    de datos y features (bagging). Promedia sus predicciones para reducir
+    la varianza y el overfitting respecto a un árbol individual.
+    No asume linealidad y captura interacciones entre features.
+
+  Nota: Se excluye 'UnidadesVendidas' del conjunto de features para este
+    modelo (y XGBoost). Esta variable es la suma diaria de Quantity, y
+    Ventas = Σ(Quantity × UnitPrice) del mismo día → correlación casi
+    perfecta que introduce fuga de información (data leakage).
+    En su lugar, el modelo dispone de los lags y rolling-means de ambas
+    variables, que sí están disponibles en producción.
+
+  Hiperparámetros estudiados (rejilla conservadora anti-overfitting):
+    · n_estimators    : número de árboles (100, 200, 300)
+    · max_depth       : profundidad máxima (3, 5, 8)
+    · min_samples_leaf: muestras mínimas en hoja (3, 5, 10)
+    · max_features    : features por split ('sqrt', 0.3, 0.5)
+""")
+
+# ── 9.2.1  Excluir UnidadesVendidas (data leakage) ──────────────────────────
+COLS_RF   = [c for c in COLS_FEATURES if c != 'UnidadesVendidas']
+idx_RF    = [COLS_FEATURES.index(c) for c in COLS_RF]
+X_train_rf = X_train[:, idx_RF]
+X_val_rf   = X_val  [:, idx_RF]
+X_test_rf  = X_test [:, idx_RF]
+print(f"  Features usadas en RF: {len(COLS_RF)} (excluida 'UnidadesVendidas')")
+
+# ── 9.2.2  Búsqueda de hiperparámetros (rejilla conservadora) ───────────────
+param_grid_rf = {
+    'n_estimators'    : [100, 200, 300],
+    'max_depth'       : [3, 5, 8],
+    'min_samples_leaf': [3, 5, 10],
+    'max_features'    : ['sqrt', 0.3, 0.5],
+}
+
+print("  RandomizedSearchCV en curso (20 combinaciones)...")
+best_rmse_rf   = np.inf
+best_params_rf = {}
+np.random.seed(42)
+
+from itertools import product as iterproduct
+import random
+random.seed(42)
+
+# Generar 20 combinaciones aleatorias
+keys_rf   = list(param_grid_rf.keys())
+values_rf = list(param_grid_rf.values())
+todas_rf  = list(iterproduct(*values_rf))
+sample_rf = random.sample(todas_rf, min(20, len(todas_rf)))
+
+resultados_rf = []
+for combo in sample_rf:
+    params = dict(zip(keys_rf, combo))
+    rf = RandomForestRegressor(random_state=42, n_jobs=-1, **params)
+    rf.fit(X_train_rf, y_train_sc)
+    y_val_pred_sc = rf.predict(X_val_rf)
+    rmse_v, _, _  = rmse_original(y_val_sc, y_val_pred_sc, scaler_y)
+    resultados_rf.append((params, rmse_v))
+    if rmse_v < best_rmse_rf:
+        best_rmse_rf   = rmse_v
+        best_params_rf = params
+
+print(f"\n  Top 5 combinaciones (por RMSE Val):")
+print(f"  {'n_est':>6} {'depth':>6} {'min_leaf':>9} {'max_feat':>9} {'RMSE Val':>12}")
+print(f"  {'-'*46}")
+for params, rmse_v in sorted(resultados_rf, key=lambda x: x[1])[:5]:
+    print(f"  {params['n_estimators']:>6} {params['max_depth']:>6} "
+          f"{params['min_samples_leaf']:>9} {str(params['max_features']):>9} "
+          f"£{rmse_v:>10,.2f}")
+
+# ── 9.2.3  Reentrenar con mejores hiperparámetros ────────────────────────────
+rf_best = RandomForestRegressor(random_state=42, n_jobs=-1, **best_params_rf)
+rf_best.fit(X_train_rf, y_train_sc)
+
+y_val_pred_sc_rf  = rf_best.predict(X_val_rf)
+y_test_pred_sc_rf = rf_best.predict(X_test_rf)
+
+rmse_val_rf,   _,           _           = rmse_original(y_val_sc,  y_val_pred_sc_rf,  scaler_y)
+rmse_test_rf,  y_test_orig, y_pred_rf   = rmse_original(y_test_sc, y_test_pred_sc_rf, scaler_y)
+
+print_resultados('Random Forest Regressor', rmse_val_rf, rmse_test_rf, y_test_orig, y_pred_rf)
+print(f"\n  Mejores hiperparámetros: {best_params_rf}")
+
+# ── 9.2.4  Importancia de features ──────────────────────────────────────────
+importancias = pd.Series(rf_best.feature_importances_, index=COLS_RF)
+top_imp = importancias.sort_values(ascending=False).head(10)
+print(f"\n  Top 10 features más importantes (Random Forest):")
+for feat, imp in top_imp.items():
+    print(f"    {feat:<22}  {imp:.4f}  {'█' * int(imp * 100)}")
+
+resultados_modelos['Random Forest'] = {
+    'rmse_val': rmse_val_rf, 'rmse_test': rmse_test_rf,
+    'y_pred': y_pred_rf, 'params': best_params_rf
+}
+
+# ════════════════════════════════════════════════════════════
+# 9.3  MODELO 3 — XGBOOST REGRESSOR
+# ════════════════════════════════════════════════════════════
+print("\n\n--- 9.3 Modelo 3: XGBoost Regressor ---")
+print("""
+  Descripción:
+    Gradient Boosting optimizado que construye árboles secuencialmente,
+    corrigiendo los errores del árbol anterior. Incorpora regularización
+    L1 (reg_alpha) y L2 (reg_lambda) para controlar el overfitting.
+    Muy efectivo para series temporales tabulares con features de lag.
+
+  Nota: Al igual que RF, se excluye 'UnidadesVendidas' para evitar
+    data leakage (columna COLS_RF, 39 features).
+
+  Hiperparámetros estudiados:
+    · n_estimators   : número de árboles (100, 200, 500)
+    · max_depth      : profundidad máxima (3, 5, 7)
+    · learning_rate  : tasa de aprendizaje (0.01, 0.05, 0.1, 0.2)
+    · subsample      : fracción de muestras por árbol (0.7, 0.8, 1.0)
+    · colsample_bytree: fracción de features por árbol (0.7, 0.8, 1.0)
+    · reg_alpha      : regularización L1 (0, 0.1, 1.0)
+    · reg_lambda     : regularización L2 (1, 5, 10)
+    Early stopping: detiene el entrenamiento si el RMSE en val no mejora
+    en 20 rondas consecutivas → evita overfitting automáticamente.
+""")
+
+# COLS_RF / X_train_rf / X_val_rf / X_test_rf ya definidos en 9.2
+print(f"  Features usadas en XGBoost: {len(COLS_RF)} (excluida 'UnidadesVendidas')")
+
+param_dist_xgb = {
+    'n_estimators'    : [100, 200, 500],
+    'max_depth'       : [3, 5, 7],
+    'learning_rate'   : [0.01, 0.05, 0.1, 0.2],
+    'subsample'       : [0.7, 0.8, 1.0],
+    'colsample_bytree': [0.7, 0.8, 1.0],
+    'reg_alpha'       : [0, 0.1, 1.0],
+    'reg_lambda'      : [1, 5, 10],
+}
+
+print("  RandomizedSearchCV en curso (30 combinaciones + early stopping)...")
+keys_xgb   = list(param_dist_xgb.keys())
+values_xgb = list(param_dist_xgb.values())
+todas_xgb  = list(iterproduct(*values_xgb))
+sample_xgb = random.sample(todas_xgb, min(30, len(todas_xgb)))
+
+best_rmse_xgb   = np.inf
+best_params_xgb = {}
+resultados_xgb  = []
+
+for combo in sample_xgb:
+    params = dict(zip(keys_xgb, combo))
+    n_est = params.pop('n_estimators')
+    xgb_model = xgb.XGBRegressor(
+        n_estimators=n_est,
+        objective='reg:squarederror',
+        random_state=42,
+        verbosity=0,
+        early_stopping_rounds=20,
+        **params
+    )
+    xgb_model.fit(
+        X_train_rf, y_train_sc,
+        eval_set=[(X_val_rf, y_val_sc)],
+        verbose=False
+    )
+    y_val_pred_sc = xgb_model.predict(X_val_rf)
+    rmse_v, _, _  = rmse_original(y_val_sc, y_val_pred_sc, scaler_y)
+    params['n_estimators'] = xgb_model.best_iteration + 1  # nº real de árboles usados
+    resultados_xgb.append((params, rmse_v))
+    if rmse_v < best_rmse_xgb:
+        best_rmse_xgb   = rmse_v
+        best_params_xgb = dict(params)
+
+print(f"\n  Top 5 combinaciones (por RMSE Val):")
+print(f"  {'n_est':>6} {'depth':>6} {'lr':>6} {'sub':>5} {'col':>5} {'a':>5} {'l':>5} {'RMSE Val':>12}")
+print(f"  {'-'*62}")
+for params, rmse_v in sorted(resultados_xgb, key=lambda x: x[1])[:5]:
+    print(f"  {params.get('n_estimators','-'):>6} {params['max_depth']:>6} "
+          f"{params['learning_rate']:>6} {params['subsample']:>5} "
+          f"{params['colsample_bytree']:>5} {params['reg_alpha']:>5} "
+          f"{params['reg_lambda']:>5} £{rmse_v:>10,.2f}")
+
+# ── 9.3.3  Reentrenar con mejores hiperparámetros ────────────────────────────
+n_est_best = best_params_xgb.pop('n_estimators')
+xgb_best = xgb.XGBRegressor(
+    n_estimators=n_est_best,
+    objective='reg:squarederror',
+    random_state=42,
+    verbosity=0,
+    **best_params_xgb
+)
+xgb_best.fit(X_train_rf, y_train_sc)
+best_params_xgb['n_estimators'] = n_est_best  # restaurar para el resumen
+
+y_val_pred_sc_xgb  = xgb_best.predict(X_val_rf)
+y_test_pred_sc_xgb = xgb_best.predict(X_test_rf)
+
+rmse_val_xgb,  _,           _           = rmse_original(y_val_sc,  y_val_pred_sc_xgb,  scaler_y)
+rmse_test_xgb, y_test_orig, y_pred_xgb  = rmse_original(y_test_sc, y_test_pred_sc_xgb, scaler_y)
+
+print_resultados('XGBoost Regressor', rmse_val_xgb, rmse_test_xgb, y_test_orig, y_pred_xgb)
+print(f"\n  Mejores hiperparámetros: {best_params_xgb}")
+
+# ── 9.3.4  Importancia de features XGBoost ───────────────────────────────────
+imp_xgb = pd.Series(xgb_best.feature_importances_, index=COLS_RF)
+top_xgb = imp_xgb.sort_values(ascending=False).head(10)
+print(f"\n  Top 10 features más importantes (XGBoost):")
+for feat, imp in top_xgb.items():
+    print(f"    {feat:<22}  {imp:.4f}  {'█' * int(imp * 100)}")
+
+resultados_modelos['XGBoost'] = {
+    'rmse_val': rmse_val_xgb, 'rmse_test': rmse_test_xgb,
+    'y_pred': y_pred_xgb, 'params': best_params_xgb
+}
+
+# ════════════════════════════════════════════════════════════
+# 9.4  COMPARATIVA FINAL DE MODELOS
+# ════════════════════════════════════════════════════════════
+print("\n\n--- 9.4 Comparativa final de los 3 modelos ---\n")
+
+print(f"  {'Modelo':<22} {'RMSE Val (£)':>14} {'RMSE Test (£)':>14} {'Error rel. (%)':>16}")
+print(f"  {'-'*68}")
+mejor_modelo = min(resultados_modelos.items(), key=lambda x: x[1]['rmse_test'])
+for nombre, res in resultados_modelos.items():
+    marca = ' ← MEJOR' if nombre == mejor_modelo[0] else ''
+    er    = res['rmse_test'] / y_test_orig.mean() * 100
+    print(f"  {nombre:<22} £{res['rmse_val']:>12,.2f} £{res['rmse_test']:>12,.2f} "
+          f"{er:>15.1f}%{marca}")
+
+# ── 9.4.1  Gráfica — predicciones vs reales en el test set ──────────────────
+import matplotlib.ticker as mticker
+fechas_test = df_test_s9['Fecha'].values
+
+fig, axes = plt.subplots(3, 1, figsize=(14, 13), sharex=True)
+fig.suptitle('9.4 — Predicciones vs Ventas reales (Test set: nov–dic 2011)', fontsize=13)
+
+modelos_plot = [
+    ('Polinómica',    resultados_modelos['Polinómica']['y_pred'],   'orange'),
+    ('Random Forest', resultados_modelos['Random Forest']['y_pred'],'steelblue'),
+    ('XGBoost',       resultados_modelos['XGBoost']['y_pred'],      'green'),
+]
+
+ventas_reales_test = scaler_y.inverse_transform(y_test_sc.reshape(-1,1)).ravel()
+
+for ax, (nombre, y_pred, color) in zip(axes, modelos_plot):
+    ax.plot(fechas_test, ventas_reales_test, color='black',
+            linewidth=1.5, label='Ventas reales', zorder=3)
+    ax.plot(fechas_test, y_pred, color=color,
+            linewidth=1.5, linestyle='--', label=f'Predicción {nombre}', zorder=2)
+    rmse_t = resultados_modelos[nombre]['rmse_test']
+    ax.set_title(f'{nombre}  —  RMSE Test: £{rmse_t:,.0f}', fontsize=11)
+    ax.set_ylabel('Ventas (£)')
+    ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda x, _: f'£{x:,.0f}'))
+    ax.legend(fontsize=9)
+
+axes[-1].set_xlabel('Fecha')
+plt.tight_layout()
+plt.savefig(f'{RUTA_GRAFICOS}9.4_predicciones_test.png', dpi=150)
+plt.show()
+plt.close()
+print(f"  Guardado: 9.4_predicciones_test.png")
+
+# ── 9.4.2  Gráfica — importancia de features comparada ──────────────────────
+fig, axes = plt.subplots(1, 2, figsize=(14, 6))
+fig.suptitle('9.4 — Importancia de features: Random Forest vs XGBoost', fontsize=13)
+
+for ax, (nombre, imp_series, color) in zip(axes, [
+    ('Random Forest', importancias.sort_values(ascending=False).head(15), 'steelblue'),
+    ('XGBoost',       imp_xgb.sort_values(ascending=False).head(15),      'green'),
+]):
+    ax.barh(imp_series.index[::-1], imp_series.values[::-1], color=color, edgecolor='white')
+    ax.set_title(f'Top 15 features — {nombre}')
+    ax.set_xlabel('Importancia')
+
+plt.tight_layout()
+plt.savefig(f'{RUTA_GRAFICOS}9.4_importancia_features.png', dpi=150)
+plt.show()
+plt.close()
+print(f"  Guardado: 9.4_importancia_features.png")
+
+print(f"\n  ✓ Sección 9 (Entrenamiento de modelos) completada.")
+print(f"    Mejor modelo: {mejor_modelo[0]}  —  RMSE Test: £{mejor_modelo[1]['rmse_test']:,.2f}")
