@@ -2,3 +2,5 @@
 __pycache__/
 .ipynb_checkpoints/
 kaggle.json
+models/*.pkl
+models/*.json
